@@ -423,7 +423,7 @@
       "isCustom": true,
       "source": "admin",
       "isDemo": false,
-      "isVerified": false
+      "isVerified": true
     }
   ],
   "subjects": [],
