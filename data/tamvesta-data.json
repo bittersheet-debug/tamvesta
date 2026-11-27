@@ -45,7 +45,8 @@
       "qrToken": "TAMVESTA:STUDENT:user_staff_titus_yayasan:6cbaf18c0cf01ff8",
       "createdAt": "2026-10-24T08:22:46.837Z",
       "updatedAt": "2026-10-24T08:22:46.837Z",
-      "password": "Tamvesta!T2602"
+      "password": "Tamvesta!T2602",
+      "isVerified": true
     },
     {
       "id": "user_staff_margaretha_h",
