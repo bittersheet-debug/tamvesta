@@ -376,30 +376,8 @@
       "salt": "7e1e10ed5203669f3d107fecf5f68dfa",
       "phone": "0895410591097",
       "email": "paro.pratama.herlenn@gmail.com",
-      "passwordChanged": true
-    },
-    {
-      "id": "stu_1793384582080_7ddbl",
-      "username": "aldongker",
-      "name": "Ibrahim Al Ashry",
-      "role": "siswa",
-      "gender": "Laki-laki",
-      "kelas": "Kelas 9",
-      "initialPassword": "123456",
-      "password": "123456",
-      "passwordHash": "f0320e943d32c0d49dcf3c55e6edd0e447d112500bd4c07f29197cff525b3f3af1868539b22bf795490c4ac903669192196ab89d859fbd517eb304b02f31b1b7",
-      "salt": "f3813b9374025ad1f3cfa7d2e9eafc8c",
-      "mustChangePassword": false,
-      "isActive": true,
-      "qrToken": "TAMVESTA:STUDENT:stu_1793384582080_7ddbl:afdc378c15556f3f",
-      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Ibrahim%20Al%20Ashry&backgroundColor=0284c7",
-      "createdAt": "2026-10-30T18:23:02.080Z",
-      "updatedAt": "2026-10-31T07:57:50.805Z",
-      "isOfficial": true,
-      "isCustom": true,
-      "source": "admin",
-      "isDemo": false,
-      "isVerified": true
+      "passwordChanged": true,
+      "isAlumni": false
     },
     {
       "id": "stu_1793384638396_vxd3b",
@@ -421,7 +399,8 @@
       "isOfficial": true,
       "isCustom": true,
       "source": "admin",
-      "isDemo": false
+      "isDemo": false,
+      "isVerified": true
     },
     {
       "id": "stu_1795778289430_hmpmd",
@@ -443,7 +422,8 @@
       "isOfficial": true,
       "isCustom": true,
       "source": "admin",
-      "isDemo": false
+      "isDemo": false,
+      "isVerified": true
     }
   ],
   "subjects": [],
@@ -599,26 +579,6 @@
   "gameRooms": [],
   "refreshSignals": [
     {
-      "id": "sig_1795778293200_myrl",
-      "userId": "user_admin_tamansiswa",
-      "userName": "Administrator Tamansiswa Batam",
-      "userUsername": "TAMANSISWA",
-      "userKelas": "-",
-      "timestamp": "2026-11-27T11:18:13.200Z",
-      "formattedTime": "11.18.13 WIB",
-      "status": "received"
-    },
-    {
-      "id": "sig_1795778289463_5prp",
-      "userId": "stu_1795778289430_hmpmd",
-      "userName": "Alvaro Pratama Herlen",
-      "userUsername": "kimel",
-      "userKelas": "Kelas 8",
-      "timestamp": "2026-11-27T11:18:09.438Z",
-      "formattedTime": "11.18.09 WIB",
-      "status": "received"
-    },
-    {
       "id": "sig_1794044519462_c63l",
       "userKelas": "-",
       "timestamp": "2026-11-07T09:41:59.462Z",
@@ -676,7 +636,9 @@
     "guru.matematika",
     "guru.bahasa",
     "kepala.sekolah",
-    "panitia.osis"
+    "panitia.osis",
+    "stu_1793384582080_7ddbl",
+    "aldongker"
   ],
   "schedules": [],
   "schoolClasses": [
