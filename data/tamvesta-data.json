@@ -13,7 +13,8 @@
       "isActive": true,
       "qrToken": "TAMVESTA:STUDENT:user_admin_tamansiswa:785efa956b468c8f",
       "createdAt": "2026-10-24T08:22:45.298Z",
-      "updatedAt": "2026-10-24T08:22:45.298Z"
+      "updatedAt": "2026-10-24T08:22:45.298Z",
+      "isVerified": true
     },
     {
       "id": "user_staff_bambang_kepsek",
