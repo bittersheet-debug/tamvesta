@@ -679,14 +679,6 @@
       "description": "Kelas 9 Persiapan Ujian",
       "createdAt": "2026-11-27T09:56:33.320Z",
       "updatedAt": "2026-11-27T09:56:33.320Z"
-    },
-    {
-      "id": "class_9b",
-      "name": "Kelas 9B",
-      "grade": "9",
-      "description": "Kelas 9 Reguler",
-      "createdAt": "2026-11-27T09:56:33.320Z",
-      "updatedAt": "2026-11-27T09:56:33.320Z"
     }
   ],
   "schedules": []
