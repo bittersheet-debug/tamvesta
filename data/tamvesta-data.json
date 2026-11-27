@@ -377,7 +377,7 @@
       "phone": "0895410591097",
       "email": "paro.pratama.herlenn@gmail.com",
       "passwordChanged": true,
-      "isAlumni": true
+      "isAlumni": false
     },
     {
       "id": "stu_1793384582080_7ddbl",
@@ -422,7 +422,8 @@
       "isOfficial": true,
       "isCustom": true,
       "source": "admin",
-      "isDemo": false
+      "isDemo": false,
+      "isVerified": true
     }
   ],
   "subjects": [],
@@ -637,6 +638,7 @@
     "kepala.sekolah",
     "panitia.osis"
   ],
+  "schedules": [],
   "schoolClasses": [
     {
       "id": "class_7a",
@@ -686,6 +688,5 @@
       "createdAt": "2026-11-27T10:24:44.731Z",
       "updatedAt": "2026-11-27T10:24:44.731Z"
     }
-  ],
-  "schedules": []
+  ]
 }
