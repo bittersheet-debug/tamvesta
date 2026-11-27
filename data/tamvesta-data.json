@@ -642,48 +642,48 @@
       "name": "Kelas 7A",
       "grade": "7",
       "description": "Kelas 7 Unggulan",
-      "createdAt": "2026-11-27T09:55:42.894Z",
-      "updatedAt": "2026-11-27T09:55:42.894Z"
+      "createdAt": "2026-11-27T09:56:03.332Z",
+      "updatedAt": "2026-11-27T09:56:03.332Z"
     },
     {
       "id": "class_7b",
       "name": "Kelas 7B",
       "grade": "7",
       "description": "Kelas 7 Reguler",
-      "createdAt": "2026-11-27T09:55:42.894Z",
-      "updatedAt": "2026-11-27T09:55:42.894Z"
+      "createdAt": "2026-11-27T09:56:03.332Z",
+      "updatedAt": "2026-11-27T09:56:03.332Z"
     },
     {
       "id": "class_8a",
       "name": "Kelas 8A",
       "grade": "8",
       "description": "Kelas 8 Unggulan",
-      "createdAt": "2026-11-27T09:55:42.894Z",
-      "updatedAt": "2026-11-27T09:55:42.894Z"
+      "createdAt": "2026-11-27T09:56:03.332Z",
+      "updatedAt": "2026-11-27T09:56:03.332Z"
     },
     {
       "id": "class_8b",
       "name": "Kelas 8B",
       "grade": "8",
       "description": "Kelas 8 Reguler",
-      "createdAt": "2026-11-27T09:55:42.894Z",
-      "updatedAt": "2026-11-27T09:55:42.894Z"
+      "createdAt": "2026-11-27T09:56:03.332Z",
+      "updatedAt": "2026-11-27T09:56:03.332Z"
     },
     {
       "id": "class_9a",
       "name": "Kelas 9A",
       "grade": "9",
       "description": "Kelas 9 Persiapan Ujian",
-      "createdAt": "2026-11-27T09:55:42.894Z",
-      "updatedAt": "2026-11-27T09:55:42.894Z"
+      "createdAt": "2026-11-27T09:56:03.332Z",
+      "updatedAt": "2026-11-27T09:56:03.332Z"
     },
     {
       "id": "class_9b",
       "name": "Kelas 9B",
       "grade": "9",
       "description": "Kelas 9 Reguler",
-      "createdAt": "2026-11-27T09:55:42.894Z",
-      "updatedAt": "2026-11-27T09:55:42.894Z"
+      "createdAt": "2026-11-27T09:56:03.332Z",
+      "updatedAt": "2026-11-27T09:56:03.332Z"
     }
   ]
 }
