@@ -511,17 +511,6 @@
   "notes": [],
   "notifications": [
     {
-      "id": "notif_1794044519451_8fhlo",
-      "title": "✅ Pendaftaran Siswa Di-ACC",
-      "message": "Pendaftaran akun siswa Siswa Percobaan PPDB (@test.siswa.1794044519232) telah disetujui (ACC) oleh Admin Penguji. Akun kini aktif.",
-      "type": "system",
-      "isImportant": false,
-      "linkType": "none",
-      "readBy": [],
-      "deletedBy": [],
-      "createdAt": "2026-11-07T09:41:59.451Z"
-    },
-    {
       "id": "notif_1794044519265_sww7u",
       "title": "📋 Pendaftaran Siswa Baru (Menunggu ACC)",
       "message": "Calon siswa: Siswa Percobaan PPDB (REG-2026-16538) mendaftar untuk kelas Kelas 7. Menunggu verifikasi dan persetujuan (ACC).",
@@ -642,48 +631,48 @@
       "name": "Kelas 7A",
       "grade": "7",
       "description": "Kelas 7 Unggulan",
-      "createdAt": "2026-11-27T09:56:03.332Z",
-      "updatedAt": "2026-11-27T09:56:03.332Z"
+      "createdAt": "2026-11-27T09:56:33.320Z",
+      "updatedAt": "2026-11-27T09:56:33.320Z"
     },
     {
       "id": "class_7b",
       "name": "Kelas 7B",
       "grade": "7",
       "description": "Kelas 7 Reguler",
-      "createdAt": "2026-11-27T09:56:03.332Z",
-      "updatedAt": "2026-11-27T09:56:03.332Z"
+      "createdAt": "2026-11-27T09:56:33.320Z",
+      "updatedAt": "2026-11-27T09:56:33.320Z"
     },
     {
       "id": "class_8a",
       "name": "Kelas 8A",
       "grade": "8",
       "description": "Kelas 8 Unggulan",
-      "createdAt": "2026-11-27T09:56:03.332Z",
-      "updatedAt": "2026-11-27T09:56:03.332Z"
+      "createdAt": "2026-11-27T09:56:33.320Z",
+      "updatedAt": "2026-11-27T09:56:33.320Z"
     },
     {
       "id": "class_8b",
       "name": "Kelas 8B",
       "grade": "8",
       "description": "Kelas 8 Reguler",
-      "createdAt": "2026-11-27T09:56:03.332Z",
-      "updatedAt": "2026-11-27T09:56:03.332Z"
+      "createdAt": "2026-11-27T09:56:33.320Z",
+      "updatedAt": "2026-11-27T09:56:33.320Z"
     },
     {
       "id": "class_9a",
       "name": "Kelas 9A",
       "grade": "9",
       "description": "Kelas 9 Persiapan Ujian",
-      "createdAt": "2026-11-27T09:56:03.332Z",
-      "updatedAt": "2026-11-27T09:56:03.332Z"
+      "createdAt": "2026-11-27T09:56:33.320Z",
+      "updatedAt": "2026-11-27T09:56:33.320Z"
     },
     {
       "id": "class_9b",
       "name": "Kelas 9B",
       "grade": "9",
       "description": "Kelas 9 Reguler",
-      "createdAt": "2026-11-27T09:56:03.332Z",
-      "updatedAt": "2026-11-27T09:56:03.332Z"
+      "createdAt": "2026-11-27T09:56:33.320Z",
+      "updatedAt": "2026-11-27T09:56:33.320Z"
     }
   ]
 }
