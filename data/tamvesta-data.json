@@ -542,17 +542,6 @@
       "readBy": [],
       "deletedBy": [],
       "createdAt": "2026-10-31T09:13:10.084Z"
-    },
-    {
-      "id": "notif_subject_1",
-      "title": "Pembaruan Jadwal: Matematika Wajib",
-      "message": "Jadwal mata pelajaran Matematika dipindahkan ke Ruang Multimedia 2 pada jam 08:45 WIB.",
-      "type": "subject_change",
-      "isImportant": false,
-      "linkType": "subject",
-      "readBy": [],
-      "deletedBy": [],
-      "createdAt": "2026-10-31T07:13:10.084Z"
     }
   ],
   "articles": [],
