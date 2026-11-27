@@ -1,0 +1,803 @@
+export type UserRole = 'admin' | 'guru' | 'siswa' | 'kepala_sekolah' | 'tata_usaha' | 'panitia' | 'support' | 'satpam';
+
+export interface User {
+  id: string;
+  username: string;
+  name: string;
+  role: UserRole;
+  nisn?: string;
+  gender?: 'Laki-laki' | 'Perempuan';
+  jabatan?: string;
+  initialPassword?: string;
+  password?: string;
+  passwordHash: string;
+  salt: string;
+  mustChangePassword?: boolean;
+  isActive: boolean;
+  isAlumni?: boolean; // Status Siswa: Siswa Aktif vs Alumni
+  isVerified?: boolean; // Status Terverifikasi Resmi
+  isDeveloper?: boolean; // Centang kuning resmi (Developer Resmi TAMVESTA)
+  badgeType?: 'blue' | 'yellow' | 'developer' | 'green' | 'gold'; // Tipe lencana akun (green untuk Guru)
+  followersCountDisplay?: string; // Tampilan pengikut kustom (misal: "1,1M")
+  kelas?: string;
+  classGrade?: string;
+  classMajor?: string;
+  qrToken: string; // Secure unique identification token for attendance
+  avatarUrl?: string;
+  bio?: string;
+  phone?: string; // Nomor Telepon / WhatsApp
+  email?: string; // Gmail / Email siswa
+  passwordChanged?: boolean; // True jika siswa sudah pernah mengganti kata sandi dari default
+  contactInfoCompleted?: boolean; // True jika siswa sudah melengkapi nomor HP & Gmail
+  lastUsernameChange?: string; // Catatan waktu perubahan username terakhir (maksimal 1x per 30 hari)
+  // Pendaftaran Siswa Baru Mandiri (PPDB Portal)
+  registrationStatus?: 'pending' | 'approved' | 'rejected';
+  registrationNumber?: string;
+  registeredAt?: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  parentName?: string;
+  birthPlaceDate?: string;
+  address?: string;
+  usernameChangeHistory?: { oldUsername: string; newUsername: string; changedAt: string }[];
+  following?: string[]; // Daftar ID pengguna yang diikuti
+  followers?: string[]; // Daftar ID pengikut
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RefreshSignal {
+  id: string;
+  userId: string;
+  userName: string;
+  userUsername: string;
+  userKelas?: string;
+  timestamp: string; // ISO string
+  formattedTime?: string;
+  status: 'received' | 'processed';
+}
+
+export interface ModerationLog {
+  id: string;
+  action: 'reset_avatar' | 'delete_post' | 'delete_story';
+  targetUserId: string;
+  targetUserName: string;
+  targetUsername: string;
+  targetUserKelas?: string;
+  reason: string;
+  moderatorId: string;
+  moderatorName: string;
+  moderatorUsername: string;
+  timestamp: string;
+  details?: string;
+}
+
+export interface PasswordResetRequest {
+  id: string;
+  ticketNumber?: string;
+  userId: string;
+  username: string;
+  name: string;
+  kelas?: string;
+  role: UserRole;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  newPasswordHash?: string;
+  newSalt?: string;
+  newPassword?: string;
+  createdAt: string;
+  processedAt?: string;
+  processedBy?: string;
+  adminNote?: string;
+}
+
+export interface Subject {
+  id: string;
+  name: string;
+  code: string;
+  teacherId?: string;
+  teacherName: string;
+  description: string;
+  grade: string;
+  schedule: string;
+  imageUrl: string;
+  room?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DigitalBook {
+  id: string;
+  title: string;
+  author: string;
+  category: string;
+  coverUrl: string;
+  description: string;
+  totalPages: number;
+  publishedYear: string;
+  content: string[];
+  createdAt: string;
+  pdfUrl?: string;
+  downloadUrl?: string;
+  sourceUrl?: string;
+  bookType?: 'Buku Siswa' | 'Buku Guru' | 'Umum' | string;
+  gradeLevel?: string;
+  curriculum?: string;
+  fileSize?: string;
+}
+
+export interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  category: 'Penting' | 'Akademik' | 'Kegiatan' | 'Umum';
+  authorName: string;
+  authorRole: string;
+  isPublished: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// -------------------------------------------------------------
+// ARTIKEL GURU & METODE PEMBELAJARAN
+// -------------------------------------------------------------
+export interface TeacherArticle {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar?: string;
+  authorSubject?: string;
+  title: string;
+  summary: string;
+  content: string;
+  category: 'Artikel Guru' | 'Metode Pembelajaran';
+  coverUrl?: string;
+  isPublished: boolean; // Diterbitkan ke siswa atau masih draf
+  likesCount?: number;
+  readsCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// -------------------------------------------------------------
+// KUIS SISWA
+// -------------------------------------------------------------
+export interface QuizQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  correctOptionIndex: number;
+  explanation?: string;
+}
+
+export interface Quiz {
+  id: string;
+  title: string;
+  subjectId: string;
+  subjectName: string;
+  teacherId?: string;
+  teacherName: string;
+  description: string;
+  durationMinutes: number;
+  passingScore: number;
+  token: string;
+  sourceType: 'interactive' | 'google_forms';
+  externalUrl?: string;
+  password?: string;
+  scheduleStart?: string;
+  scheduleEnd?: string;
+  questions: QuizQuestion[];
+  isActive: boolean;
+  status?: 'active' | 'inactive' | 'scheduled';
+  createdAt: string;
+}
+
+export interface QuizViolation {
+  id: string;
+  quizId: string;
+  quizTitle: string;
+  studentId: string;
+  studentName: string;
+  studentUsername?: string;
+  teacherId?: string;
+  teacherName?: string;
+  violationType: 'tab_switch' | 'window_blur' | 'attempt_exit' | 'fullscreen_exit';
+  violationDetail: string;
+  timestamp: string;
+}
+
+export interface QuizParticipant {
+  id: string;
+  quizId: string;
+  quizTitle: string;
+  studentId: string;
+  studentName: string;
+  studentUsername?: string;
+  studentKelas?: string;
+  tokenUsed: string;
+  enteredAt: string;
+  status: 'in_progress' | 'completed';
+  score?: number;
+}
+
+export interface QuizAttempt {
+  id: string;
+  quizId: string;
+  quizTitle: string;
+  studentId: string;
+  studentName: string;
+  username: string;
+  tokenUsed: string;
+  score: number;
+  totalQuestions: number;
+  correctAnswersCount: number;
+  passed: boolean;
+  answers: { questionId: string; selectedOption: number; isCorrect: boolean }[];
+  completedAt: string;
+}
+
+// -------------------------------------------------------------
+// ABSENSI & DATA KEHADIRAN (EVENT & HARIAN KELAS GURU)
+// -------------------------------------------------------------
+export type ClassAttendanceStatus = 'Hadir' | 'Izin' | 'Sakit' | 'Alpa' | 'hadir' | 'izin' | 'sakit' | 'alpa';
+
+export interface ClassAttendanceEntry {
+  id: string;
+  date: string; // YYYY-MM-DD
+  time?: string; // HH:mm
+  kelas?: string;
+  studentKelas?: string;
+  subjectName?: string;
+  teacherId?: string;
+  teacherName?: string;
+  studentId: string;
+  studentName: string;
+  studentUsername?: string;
+  status: ClassAttendanceStatus;
+  notes?: string;
+  method?: 'qr_scan' | 'manual';
+  recordedBy?: string;
+  recordedRole?: string;
+  createdAt?: string;
+}
+
+export interface AttendanceEvent {
+  id: string;
+  name: string;
+  category?: 'Event Sekolah' | 'Kegiatan OSIS' | 'Rapat OSIS' | 'Lomba Sekolah' | 'Kegiatan Khusus Siswa' | string;
+  description?: string;
+  location?: string;
+  eventDate?: string;
+  startTime?: string;
+  endTime?: string;
+  isOpen?: boolean;
+  isActive?: boolean;
+  createdAt?: string;
+  createdBy?: string;
+  timestamp?: string;
+  type?: string;
+  studentName?: string;
+  studentKelas?: string;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  eventId: string;
+  eventName: string;
+  studentId: string;
+  studentName: string;
+  username: string;
+  kelas?: string;
+  verifiedAt: string;
+  verifiedBy: string;
+  status: 'TELAH MASUK' | 'Hadir' | 'Izin' | 'Sakit' | 'Alpa';
+  verificationResult: 'BERHASIL';
+  notes?: string;
+}
+
+export type ScanVerificationStatus =
+  | 'SUCCESS'
+  | 'ALREADY_SCANNED'
+  | 'INVALID_QR'
+  | 'ACCOUNT_INACTIVE'
+  | 'SESSION_CLOSED'
+  | 'SERVER_ERROR';
+
+export interface ScanResultPayload {
+  status: ScanVerificationStatus;
+  message: string;
+  record?: AttendanceRecord;
+  student?: {
+    id: string;
+    name: string;
+    username: string;
+    kelas?: string;
+  };
+  event?: {
+    id: string;
+    name: string;
+  };
+  scanTime?: string;
+}
+
+// -------------------------------------------------------------
+// POSTINGAN & FEED SOSIAL SISWA
+// -------------------------------------------------------------
+export interface PostComment {
+  id: string;
+  postId: string;
+  authorId: string;
+  authorName: string;
+  authorUsername: string;
+  authorAvatar?: string;
+  authorIsVerified?: boolean;
+  authorIsDeveloper?: boolean;
+  authorBadgeType?: 'blue' | 'yellow' | 'developer' | 'green' | 'gold';
+  content: string;
+  createdAt: string;
+  replyToCommentId?: string;
+  replyToUsername?: string;
+  replyToAuthorName?: string;
+  replyToAuthorId?: string;
+}
+
+export interface StudentPost {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorUsername: string;
+  authorKelas?: string;
+  authorAvatar?: string;
+  authorIsVerified?: boolean;
+  authorIsDeveloper?: boolean;
+  authorIsAlumni?: boolean;
+  authorBadgeType?: 'blue' | 'yellow' | 'developer' | 'green' | 'gold';
+  authorRole?: string;
+  isPinned?: boolean; // Pinned feed feature
+  caption: string;
+  mediaType: 'photo' | 'video' | 'none';
+  mediaUrl?: string;
+  mediaName?: string;
+  likes: string[];
+  comments: PostComment[];
+  createdAt: string;
+}
+
+export interface Story {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorUsername: string;
+  authorAvatar?: string;
+  authorKelas?: string;
+  authorIsVerified?: boolean;
+  authorIsDeveloper?: boolean;
+  authorIsAlumni?: boolean;
+  authorBadgeType?: 'blue' | 'yellow' | 'developer' | 'green' | 'gold';
+  mediaType: 'photo' | 'video';
+  mediaUrl: string;
+  caption?: string;
+  createdAt: string;
+  expiresAt?: string;
+}
+
+export interface PersonalNote {
+  id: string;
+  userId: string;
+  title: string;
+  content: string;
+  color?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// -------------------------------------------------------------
+// ADMINISTRASI SEKOLAH / TATA USAHA (TU) & CHAT RESMI
+// -------------------------------------------------------------
+export interface TuitionBill {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentUsername: string;
+  studentKelas: string;
+  title: string;
+  category: 'SPP' | 'Uang Gedung' | 'Seragam' | 'Ujian' | 'Lainnya';
+  amount: number;
+  dueDate: string;
+  status: 'belum_lunas' | 'menunggu_verifikasi' | 'lunas';
+  paidAt?: string;
+  paymentProofUrl?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface TuitionTransaction {
+  id: string;
+  billId?: string;
+  studentId?: string;
+  studentName?: string;
+  studentKelas?: string;
+  amount: number;
+  type: 'pemasukan' | 'pengeluaran';
+  category: string;
+  date?: string;
+  paymentMethod: 'Transfer Bank' | 'Tunai / Kasir TU' | 'QRIS' | 'Virtual Account';
+  verifiedBy: string;
+  verifiedAt: string;
+  receiptNumber: string; // No Kwitansi resmi KW-2026-XXXX
+  description: string;
+  createdAt?: string;
+  notes?: string;
+}
+
+export interface TuDocument {
+  id: string;
+  title: string;
+  docNumber: string;
+  category: 'Surat Masuk' | 'Surat Keluar' | 'Surat Keterangan Siswa' | 'Arsip Ijazah' | 'Dokumen Kurikulum';
+  date: string;
+  recipientOrSender: string;
+  fileUrl?: string;
+  status: 'Arsip' | 'Menunggu TTD' | 'Selesai';
+  notes?: string;
+  createdAt: string;
+}
+
+export interface TuChatMessage {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentKelas?: string;
+  senderRole: 'siswa' | 'tata_usaha';
+  senderName: string;
+  message: string;
+  proofUrl?: string;
+  billId?: string;
+  createdAt: string;
+  isReadByTu?: boolean;
+  isReadByStudent?: boolean;
+}
+
+export interface TuMonthlyReport {
+  id: string;
+  month: string;
+  monthName: string;
+  createdAt: string;
+  sentBy: string;
+  sentByUsername: string;
+  recipients: string[];
+  summary: {
+    totalRevenue: number;
+    totalExpense?: number;
+    saldoKas?: number;
+    paidBillsCount: number;
+    unpaidBillsCount: number;
+    totalStudents?: number;
+    documentsCount?: number;
+    billsTotalAmount?: number;
+  };
+  notes?: string;
+  status: string;
+}
+
+// -------------------------------------------------------------
+// NOTIFIKASI SISTEM
+// -------------------------------------------------------------
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  type:
+    | 'announcement'
+    | 'subject_change'
+    | 'general'
+    | 'tuition'
+    | 'article'
+    | 'social_reply'
+    | 'social_comment'
+    | 'dm'
+    | 'note'
+    | 'lost_found'
+    | 'permission'
+    | 'app_report'
+    | 'quiz'
+    | 'quiz_violation'
+    | 'system';
+  isImportant?: boolean;
+  linkType?: 'announcement' | 'subject' | 'quiz' | 'tuition' | 'article' | 'post' | 'dm' | 'reports' | 'none';
+  linkId?: string;
+  targetRole?: UserRole;
+  targetClass?: string;
+  targetUserId?: string;
+  readBy: string[];
+  deletedBy: string[];
+  createdAt: string;
+}
+
+// -------------------------------------------------------------
+// DIRECT MESSAGES (DM)
+// -------------------------------------------------------------
+export interface DirectMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderUsername: string;
+  senderAvatar?: string;
+  recipientId: string;
+  recipientName: string;
+  recipientUsername: string;
+  recipientAvatar?: string;
+  text?: string;
+  mediaType?: 'text' | 'image' | 'video' | 'audio';
+  mediaUrl?: string; // photo or video URL or base64 data URL
+  audioDuration?: number; // duration in seconds for Voice Notes
+  replyToMessage?: {
+    id: string;
+    senderName: string;
+    text?: string;
+    mediaType?: string;
+  };
+  replyToStory?: {
+    id: string;
+    mediaUrl: string;
+    authorName: string;
+    caption?: string;
+    isExpired?: boolean;
+  };
+  reactions?: Record<string, string[]>; // emoji -> array of userIds
+  isRead: boolean;
+  isDeleted?: boolean;
+  forwardedFrom?: string;
+  createdAt: string; // ISO string
+}
+
+export interface DMConversation {
+  partnerId: string;
+  partnerName: string;
+  partnerUsername: string;
+  partnerAvatar?: string;
+  partnerIsVerified?: boolean;
+  lastMessage?: DirectMessage;
+  unreadCount: number;
+  updatedAt: string;
+}
+
+// -------------------------------------------------------------
+// CATATAN (NOTES) DENGAN KEDALUWARSA OTOMATIS 24 JAM
+// -------------------------------------------------------------
+export interface StudentNote {
+  id: string;
+  userId: string;
+  userName: string;
+  userUsername: string;
+  userAvatar?: string;
+  userKelas?: string;
+  text: string; // short thought / text + emoji
+  createdAt: string; // ISO string
+  expiresAt: string; // ISO string, exactly createdAt + 24 hours
+}
+
+// -------------------------------------------------------------
+// LOST AND FOUND (BARANG HILANG & DITEMUKAN)
+// -------------------------------------------------------------
+export type LostFoundType = 'lost' | 'found';
+export type LostFoundStatus =
+  | 'menunggu_pemeriksaan'
+  | 'sedang_ditindaklanjuti'
+  | 'barang_ditemukan'
+  | 'disimpan_guru'
+  | 'disimpan_satpam'
+  | 'disimpan_tu'
+  | 'menunggu_pengambilan'
+  | 'barang_telah_dikembalikan'
+  | 'laporan_selesai';
+
+export interface LostFoundClaim {
+  id: string;
+  claimantId: string;
+  claimantName: string;
+  claimantUsername: string;
+  claimantKelas?: string;
+  reason: string;
+  identifyingFeatures: string;
+  additionalInfo?: string;
+  status: 'menunggu_verifikasi' | 'sedang_diproses' | 'disetujui' | 'ditolak' | 'barang_telah_dikembalikan';
+  satpamNotes?: string;
+  officerNotes?: string;
+  verifiedBy?: string;
+  handedOverAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LostFoundItem {
+  id: string;
+  type: LostFoundType;
+  reporterId: string;
+  reporterName: string;
+  reporterUsername: string;
+  reporterKelas?: string;
+  itemName: string;
+  category: 'elektronik' | 'alat_tulis' | 'buku_dokumen' | 'pakaian_aksesoris' | 'uang_dompet' | 'kunci' | 'lainnya';
+  photoUrl?: string;
+  description: string;
+  location: string;
+  dateTime: string;
+  storageStatus?: 'masih_di_penemu' | 'diserahkan_ke_satpam' | 'diserahkan_ke_guru' | 'diserahkan_ke_tu' | string;
+  additionalNotes?: string;
+  status: LostFoundStatus;
+  claims?: LostFoundClaim[];
+  handoverOfficer?: string;
+  handoverTime?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// -------------------------------------------------------------
+// PERIZINAN TEMPAT DAN KEGIATAN
+// -------------------------------------------------------------
+export type ActivityPermissionStatus =
+  | 'menunggu_satpam'
+  | 'menunggu_kepsek'
+  | 'perlu_revisi'
+  | 'disetujui'
+  | 'ditolak'
+  | 'kegiatan_selesai';
+
+export interface ActivityPermission {
+  id: string;
+  applicantId: string;
+  applicantName: string;
+  applicantUsername: string;
+  applicantKelas?: string;
+  organizationOrClass: string;
+  activityName: string;
+  purpose: string;
+  requestedLocation: string;
+  activityDate: string;
+  startTime: string;
+  endTime: string;
+  participantCount: number;
+  supervisorTeacher: string;
+  additionalNotes?: string;
+  status: ActivityPermissionStatus;
+  satpamReview?: {
+    reviewedBy: string;
+    safetyChecked: boolean;
+    facilityAvailable: boolean;
+    notes?: string;
+    reviewedAt: string;
+  };
+  principalDecision?: {
+    decidedBy: string;
+    approved: boolean;
+    revisionNote?: string;
+    rejectionReason?: string;
+    decidedAt: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+// -------------------------------------------------------------
+// LAPORAN MENGENAI APLIKASI TAMVESTA
+// -------------------------------------------------------------
+export type AppReportType =
+  | 'error_bug'
+  | 'tidak_bisa_login'
+  | 'akun_bermasalah'
+  | 'fitur_tidak_berfungsi'
+  | 'pengumuman_notifikasi'
+  | 'kendala_penggunaan'
+  | 'saran_fitur'
+  | 'lainnya';
+
+export type AppReportStatus =
+  | 'laporan_diterima'
+  | 'sedang_ditinjau'
+  | 'sedang_ditangani'
+  | 'menunggu_informasi'
+  | 'selesai'
+  | 'ditolak';
+
+export interface AppReport {
+  id: string;
+  reporterId: string;
+  reporterName: string;
+  reporterUsername: string;
+  reporterKelas?: string;
+  reportType: AppReportType;
+  title: string;
+  description: string;
+  screenshotUrl?: string;
+  incidentTime?: string;
+  additionalNotes?: string;
+  status: AppReportStatus;
+  targetHandler: 'administrasi' | 'support' | 'both';
+  adminResponse?: {
+    respondedBy: string;
+    message: string;
+    respondedAt: string;
+  };
+  supportResponse?: {
+    respondedBy: string;
+    technicalNotes: string;
+    resolvedAt?: string;
+    respondedAt: string;
+  };
+  rejectionReason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// -------------------------------------------------------------
+// JADWAL MATA PELAJARAN (CLASS SCHEDULES)
+// -------------------------------------------------------------
+export interface ClassSchedule {
+  id: string;
+  grade: '7' | '8' | '9' | string;
+  academicYear: string;
+  title?: string;
+  description?: string;
+  imageUrl: string; // Base64 data URL or photo URL (PNG, JPG, JPEG)
+  isPublished: boolean; // draft vs published
+  createdBy: string;
+  createdByName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// -------------------------------------------------------------
+// INFORMASI & SESI PERANGKAT (DEVICE SESSIONS)
+// -------------------------------------------------------------
+export interface DeviceSession {
+  id: string;
+  userId: string;
+  username: string;
+  userName: string;
+  userRole: UserRole;
+  deviceName?: string;
+  deviceType: 'mobile' | 'tablet' | 'desktop';
+  os: string;
+  browser: string;
+  ip?: string;
+  lastActive: string;
+  isCurrent?: boolean;
+  createdAt: string;
+}
+
+// -------------------------------------------------------------
+// MANAJEMEN KELAS & WALI KELAS (SCHOOL CLASSES)
+// -------------------------------------------------------------
+export interface SchoolClass {
+  id: string;
+  name: string; // e.g. "Kelas 7A", "Kelas 7B", "Kelas 8A", "Kelas 9"
+  grade: '7' | '8' | '9' | string;
+  academicYear?: string;
+  homeroomTeacherId?: string;
+  homeroomTeacherName?: string;
+  totalStudents?: number;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// -------------------------------------------------------------
+// RIWAYAT AKTIVITAS SEKOLAH (AUDIT LOGS)
+// -------------------------------------------------------------
+export interface SchoolActivityLog {
+  id: string;
+  type: 'account_created' | 'account_updated' | 'account_deleted' | 'post_created' | 'story_created' | 'schedule_updated' | 'announcement_created' | 'admin_action' | string;
+  title: string;
+  description: string;
+  userId: string;
+  userName: string;
+  userRole: string;
+  timestamp: string;
+}
+
+// -------------------------------------------------------------
+// MENU PERMAINAN (WHO'S THE SPY & MAFIA)
+// -------------------------------------------------------------
+export * from './game.ts';
+

@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build && node -e \"require('fs').copyFileSync('TAMVESTA.apk', 'dist/TAMVESTA.apk')\"",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api"
+    },
+    {
+      "source": "/TAMVESTA.apk",
+      "destination": "/TAMVESTA.apk"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "data-sync": false
+    }
+  }
+}

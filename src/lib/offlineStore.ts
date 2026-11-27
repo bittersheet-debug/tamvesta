@@ -1,0 +1,3312 @@
+import defaultData from './defaultData.json' with { type: 'json' };
+import type {
+  User,
+  Subject,
+  DigitalBook,
+  Announcement,
+  Quiz,
+  QuizAttempt,
+  QuizParticipant,
+  QuizViolation,
+  AttendanceEvent,
+  AttendanceRecord,
+  PasswordResetRequest,
+  StudentPost,
+  PostComment,
+  Story,
+  PersonalNote,
+  AppNotification,
+} from '../types/index.ts';
+import type { GameRoom } from '../types/game.ts';
+
+const DB_KEY = 'tamvesta_standalone_db_v3';
+const GAME_ROOMS_KEY = 'tamvesta_game_rooms_v1';
+const CURRENT_USER_KEY = 'tamvesta_offline_current_user_id';
+const PASSWORDS_KEY = 'tamvesta_offline_passwords';
+const PERMANENT_AVATARS_KEY = 'tamvesta_permanent_avatars_v1';
+const PERMANENT_BIOS_KEY = 'tamvesta_permanent_bios_v1';
+export const ADMIN_STUDENTS_BACKUP_KEY = 'tamvesta_admin_registered_students_v1';
+export const ADMIN_DELETED_STUDENTS_KEY = 'tamvesta_admin_deleted_students_v1';
+export const EXPLICITLY_DELETED_QUIZZES_KEY = 'tamvesta_deleted_quizzes_ids_v1';
+const SEED_DELETED_QUIZ_IDS = [
+  'quiz_1793433581388', // ppp
+  'quiz_1793438004502', // hh
+  'quiz_1793438743437',
+];
+
+export function getExplicitlyDeletedQuizIds(): string[] {
+  try {
+    const raw = localStorage.getItem(EXPLICITLY_DELETED_QUIZZES_KEY);
+    if (raw) {
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) return Array.from(new Set([...SEED_DELETED_QUIZ_IDS, ...list]));
+    }
+  } catch (_) {}
+  return SEED_DELETED_QUIZ_IDS;
+}
+
+export function addExplicitlyDeletedQuizId(id: string) {
+  try {
+    const list = getExplicitlyDeletedQuizIds();
+    if (id && !list.includes(id)) {
+      list.push(id);
+      localStorage.setItem(EXPLICITLY_DELETED_QUIZZES_KEY, JSON.stringify(list));
+    }
+  } catch (_) {}
+}
+
+export function getAdminRegisteredStudentsBackup(): User[] {
+  try {
+    const raw = localStorage.getItem(ADMIN_STUDENTS_BACKUP_KEY);
+    if (raw) {
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) {
+        return list.filter((u) => !isDemoStudent(u));
+      }
+    }
+  } catch (_) {}
+  return [];
+}
+
+export function saveAdminRegisteredStudentsBackup(students: User[]) {
+  try {
+    localStorage.setItem(ADMIN_STUDENTS_BACKUP_KEY, JSON.stringify(students));
+  } catch (_) {}
+}
+
+export function getAdminExplicitlyDeletedIds(): string[] {
+  try {
+    const raw = localStorage.getItem(ADMIN_DELETED_STUDENTS_KEY);
+    if (raw) {
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) return list;
+    }
+  } catch (_) {}
+  return [];
+}
+
+export function addAdminExplicitlyDeletedId(id: string, username?: string) {
+  try {
+    const list = getAdminExplicitlyDeletedIds();
+    if (id && !list.includes(id.toLowerCase())) list.push(id.toLowerCase());
+    if (username) {
+      const cleanU = username.toLowerCase().replace(/^@+/, '');
+      if (!list.includes(cleanU)) list.push(cleanU);
+    }
+    localStorage.setItem(ADMIN_DELETED_STUDENTS_KEY, JSON.stringify(list));
+  } catch (_) {}
+}
+
+export const DEMO_STUDENT_USERNAMES: string[] = [
+  'guru.matematika',
+  'guru.bahasa',
+  'kepala.sekolah',
+  'panitia.osis',
+  'siswa.smp7a.001',
+  'siswa.smp7a.002',
+  'siswa.smp7a.003',
+  'siswa.smp7b.001',
+  'siswa.smp7b.002',
+  'siswa.smp8a.001',
+  'siswa.smp8a.002',
+  'siswa.smp8a.003',
+  'siswa.smp8b.001',
+  'siswa.smp8b.002',
+  'siswa.smp9a.001',
+  'siswa.smp9a.002',
+  'siswa.smp9a.003',
+  'siswa.smp9b.001',
+  'siswa.smp9b.002',
+  'siswa.sd1a.001',
+  'siswa.sd1a.002',
+  'siswa.sd2a.001',
+  'siswa.sd2a.002',
+  'siswa.sd3a.001',
+  'siswa.sd3a.002',
+  'siswa.sd4a.001',
+  'siswa.sd4a.002',
+  'siswa.sd5a.001',
+  'siswa.sd5a.002',
+  'siswa.sd6a.001',
+  'siswa.sd6a.002',
+];
+
+export const DEMO_STUDENT_NAMES: string[] = [
+  'bunga pertiwi',
+  'cahya ramadhan',
+  'dinda aulia',
+  'eka prasetyo',
+  'fajar nugroho',
+  'gita kusuma',
+  'hendra wijaya',
+  'indah lestari',
+  'joko susilo',
+  'kartika dewi',
+  'lukman hakim',
+  'melati sari',
+  'nanda putra',
+  'olivia putri',
+  'putri rahayu',
+  'qori ananda',
+  'rizky maulana',
+  'siti aminah',
+  'taufik hidayat',
+  'umi kalsum',
+  'vino pratama',
+  'wulan sari',
+  'xena maharani',
+  'yoga santoso',
+  'zahra aulia',
+  'aldi firmansyah',
+];
+
+export function isDemoStudent(u: { id?: string; username?: string; name?: string; role?: string; isOfficial?: boolean; isCustom?: boolean; source?: string; isDemo?: boolean }): boolean {
+  if (u.role && u.role !== 'siswa') return false;
+  // Akun resmi buatan Admin atau siswa permanen TIDAK PERNAH dianggap demo!
+  if ((u as any).isOfficial || (u as any).isCustom || (u as any).source === 'admin' || (u as any).isDemo === false) {
+    return false;
+  }
+  const un = (u.username || '').toLowerCase().replace(/^@+/, '');
+  const id = (u.id || '').toLowerCase();
+  const nm = (u.name || '').toLowerCase();
+
+  // Hanya blokir akun demo bawaan lama dengan format ID 'user_siswa_siswa_'
+  if (id.startsWith('user_siswa_siswa_')) return true;
+  if (DEMO_STUDENT_USERNAMES.includes(un)) return true;
+  if (DEMO_STUDENT_NAMES.includes(nm)) return true;
+  return false;
+}
+
+export function getPermanentAvatar(userId: string, username?: string): string | null {
+  try {
+    const raw = localStorage.getItem(PERMANENT_AVATARS_KEY);
+    if (!raw) return null;
+    const map = JSON.parse(raw);
+    if (userId && map[userId]) return map[userId];
+    if (username) {
+      const clean = username.toLowerCase().replace(/^@+/, '');
+      if (map[clean]) return map[clean];
+    }
+  } catch (_) {}
+  return null;
+}
+
+export function savePermanentAvatar(userId: string, username: string | undefined, avatarUrl: string) {
+  if (!avatarUrl) return;
+  try {
+    let map: Record<string, string> = {};
+    const raw = localStorage.getItem(PERMANENT_AVATARS_KEY);
+    if (raw) map = JSON.parse(raw);
+    if (userId) map[userId] = avatarUrl;
+    if (username) {
+      const clean = username.toLowerCase().replace(/^@+/, '');
+      map[clean] = avatarUrl;
+    }
+    localStorage.setItem(PERMANENT_AVATARS_KEY, JSON.stringify(map));
+  } catch (_) {}
+}
+
+export function getPermanentBio(userId: string, username?: string): string | null {
+  try {
+    const raw = localStorage.getItem(PERMANENT_BIOS_KEY);
+    if (!raw) return null;
+    const map = JSON.parse(raw);
+    if (userId && map[userId] !== undefined) return map[userId];
+    if (username) {
+      const clean = username.toLowerCase().replace(/^@+/, '');
+      if (map[clean] !== undefined) return map[clean];
+    }
+  } catch (_) {}
+  return null;
+}
+
+export function savePermanentBio(userId: string, username: string | undefined, bio: string) {
+  if (bio === undefined || bio === null) return;
+  try {
+    let map: Record<string, string> = {};
+    const raw = localStorage.getItem(PERMANENT_BIOS_KEY);
+    if (raw) map = JSON.parse(raw);
+    if (userId) map[userId] = bio;
+    if (username) {
+      const clean = username.toLowerCase().replace(/^@+/, '');
+      map[clean] = bio;
+    }
+    localStorage.setItem(PERMANENT_BIOS_KEY, JSON.stringify(map));
+  } catch (_) {}
+}
+
+
+interface StandaloneDB {
+  users: User[];
+  subjects: Subject[];
+  books: DigitalBook[];
+  announcements: Announcement[];
+  quizzes: Quiz[];
+  quizAttempts: QuizAttempt[];
+  attendanceEvents: AttendanceEvent[];
+  attendanceRecords: AttendanceRecord[];
+  passwordResetRequests: PasswordResetRequest[];
+  posts: StudentPost[];
+  stories: Story[];
+  notes: PersonalNote[];
+  notifications: AppNotification[];
+  quizParticipants?: QuizParticipant[];
+  quizViolations?: QuizViolation[];
+}
+
+function loadDB(): StandaloneDB {
+  let db: StandaloneDB;
+  try {
+    localStorage.removeItem('tamvesta_standalone_db_v1');
+    localStorage.removeItem('tamvesta_standalone_db_v2');
+    const raw = localStorage.getItem(DB_KEY);
+    if (raw) {
+      db = JSON.parse(raw);
+    } else {
+      db = defaultData as unknown as StandaloneDB;
+    }
+  } catch (e) {
+    console.warn('[OfflineDB] Error parsing stored DB, falling back to default:', e);
+    db = defaultData as unknown as StandaloneDB;
+  }
+
+  // Pastikan semua user bawaan dari defaultData.json selalu ada di db
+  if (Array.isArray((defaultData as any).users)) {
+    if (!Array.isArray(db.users)) db.users = [];
+    (defaultData as any).users.forEach((defUser: User) => {
+      const idx = db.users.findIndex(
+        (u) => u.username.toLowerCase() === defUser.username.toLowerCase()
+      );
+      if (idx === -1) {
+        db.users.push(defUser);
+      } else {
+        db.users[idx].initialPassword = db.users[idx].initialPassword || defUser.initialPassword;
+        db.users[idx].password = db.users[idx].password || db.users[idx].initialPassword || defUser.initialPassword;
+        db.users[idx].kelas = defUser.kelas || db.users[idx].kelas;
+        db.users[idx].isActive = true;
+        db.users[idx].role = defUser.role || db.users[idx].role;
+        db.users[idx].name = defUser.name || db.users[idx].name;
+        db.users[idx].username = defUser.username || db.users[idx].username;
+        db.users[idx].jabatan = defUser.jabatan || db.users[idx].jabatan;
+        if (defUser.role === 'guru') {
+          db.users[idx].isVerified = true;
+          db.users[idx].badgeType = 'green';
+        }
+      }
+    });
+
+    // Pastikan seluruh akun guru berstatus terverifikasi centang hijau permanen
+    db.users.forEach((u) => {
+      if (u.role === 'guru') {
+        u.isVerified = true;
+        u.badgeType = 'green';
+      }
+    });
+  }
+
+  // 1. Pulihkan semua akun siswa terdaftar dari backup permanen agar tidak pernah hilang saat refresh
+  const backedUpStudents = getAdminRegisteredStudentsBackup();
+  const explicitDeleted = getAdminExplicitlyDeletedIds();
+  if (Array.isArray(backedUpStudents) && backedUpStudents.length > 0) {
+    if (!Array.isArray(db.users)) db.users = [];
+    backedUpStudents.forEach((bs) => {
+      const bsClean = (bs.username || '').toLowerCase().replace(/^@+/, '');
+      if (explicitDeleted.includes(bs.id.toLowerCase()) || explicitDeleted.includes(bsClean)) return;
+      const idx = db.users.findIndex(
+        (u) => u.id === bs.id || (u.username || '').toLowerCase().replace(/^@+/, '') === bsClean
+      );
+      if (idx === -1) {
+        db.users.unshift(bs);
+      } else {
+        db.users[idx] = { ...db.users[idx], ...bs };
+      }
+    });
+  }
+
+  // 2. Pastikan akun contoh lama & 26 akun siswa contoh tidak masuk, tapi akun terdaftar admin tetap ada
+  if (Array.isArray(db.users)) {
+    db.users = db.users.filter((u) => {
+      if (isDemoStudent(u)) return false;
+      const lower = (u.username || '').toLowerCase().replace(/^@+/, '');
+      if (explicitDeleted.includes(u.id.toLowerCase()) || explicitDeleted.includes(lower)) return false;
+      return true;
+    });
+  }
+
+  (db as any).deletedUserIds = (db as any).deletedUserIds || [];
+  // Bersihkan deletedUserIds agar tidak memblokir akun siswa terdaftar admin
+  if (Array.isArray((db as any).deletedUserIds)) {
+    (db as any).deletedUserIds = (db as any).deletedUserIds.filter((did: string) => {
+      const clean = (did || '').toLowerCase().replace(/^@+/, '');
+      return DEMO_STUDENT_USERNAMES.includes(clean) || did.startsWith('user_siswa_siswa_') || explicitDeleted.includes(did.toLowerCase()) || explicitDeleted.includes(clean);
+    });
+  }
+  DEMO_STUDENT_USERNAMES.forEach((du) => {
+    if (!(db as any).deletedUserIds.includes(du)) (db as any).deletedUserIds.push(du);
+  });
+
+  // Pastikan struktur array ada dan bersihkan postingan/story dummy (hanya akun terdaftar yang mengisi)
+  if (!Array.isArray(db.posts)) db.posts = [];
+  else db.posts = db.posts.filter((p) => !p.id.startsWith('post_seed_'));
+
+  if (!Array.isArray(db.stories)) db.stories = [];
+  else db.stories = db.stories.filter((s) => !s.id.startsWith('story_seed_'));
+
+  if (!Array.isArray(db.users)) db.users = [];
+  if (!Array.isArray(db.notifications)) db.notifications = [];
+  if (!Array.isArray(db.passwordResetRequests)) db.passwordResetRequests = [];
+
+  // Pastikan seluruh kuis yang dihapus permanen disaring keluar dari database lokal
+  const explicitlyDeletedQuizzes = getExplicitlyDeletedQuizIds().map((id) => (id || '').trim().toLowerCase());
+  const deletedQuizSet = new Set(explicitlyDeletedQuizzes);
+  if (Array.isArray(db.quizzes)) {
+    db.quizzes = db.quizzes.filter((q) => {
+      const qId = (q.id || '').trim().toLowerCase();
+      if (deletedQuizSet.has(qId)) return false;
+      if (q.teacherId === 'user_staff_endang_daryanti' || q.teacherName === 'Endang Daryanti') return false;
+      if (q.title === 'ppp' || q.title === 'hh') return false;
+      return true;
+    });
+  }
+  const currentQuizIds = new Set((db.quizzes || []).map((q) => (q.id || '').trim().toLowerCase()));
+
+  // Pastikan pelanggaran, peserta, dan attempt dari kuis yang sudah dihapus tidak tertinggal di memori lokal
+  if (Array.isArray((db as any).quizViolations)) {
+    (db as any).quizViolations = (db as any).quizViolations.filter((v: any) => {
+      const vqId = (v.quizId || '').trim().toLowerCase();
+      if (deletedQuizSet.has(vqId)) return false;
+      if (!currentQuizIds.has(vqId)) return false;
+      return true;
+    });
+  }
+  if (Array.isArray((db as any).quizParticipants)) {
+    (db as any).quizParticipants = (db as any).quizParticipants.filter((p: any) => {
+      const pqId = (p.quizId || '').trim().toLowerCase();
+      if (deletedQuizSet.has(pqId)) return false;
+      if (!currentQuizIds.has(pqId)) return false;
+      return true;
+    });
+  }
+  if (Array.isArray(db.quizAttempts)) {
+    db.quizAttempts = db.quizAttempts.filter((a: any) => {
+      const aqId = (a.quizId || '').trim().toLowerCase();
+      if (deletedQuizSet.has(aqId)) return false;
+      if (!currentQuizIds.has(aqId)) return false;
+      return true;
+    });
+  }
+
+  // Pastikan foto profil & bio yang pernah disimpan selamanya tidak hilang
+  if (Array.isArray(db.users)) {
+    db.users.forEach((u) => {
+      const perm = getPermanentAvatar(u.id, u.username);
+      if (perm) {
+        u.avatarUrl = perm;
+      }
+      const permBio = getPermanentBio(u.id, u.username);
+      if (permBio !== null && permBio !== undefined) {
+        u.bio = permBio;
+      }
+    });
+  }
+
+  return db;
+}
+
+function saveDB(data: StandaloneDB) {
+  try {
+    localStorage.setItem(DB_KEY, JSON.stringify(data));
+  } catch (e: any) {
+    console.error('[OfflineDB] Failed to save DB to localStorage:', e);
+    // Quota fallback: if localStorage quota is exceeded, strip big media from older posts/stories
+    try {
+      const cloned = { ...data };
+      if (Array.isArray(cloned.posts)) {
+        cloned.posts = cloned.posts.slice(0, 30).map((p, idx) => {
+          if (idx > 5 && p.mediaUrl && p.mediaUrl.length > 30000) {
+            return { ...p, mediaUrl: undefined };
+          }
+          return p;
+        });
+      }
+      if (Array.isArray(cloned.stories)) {
+        cloned.stories = cloned.stories.slice(0, 15);
+      }
+      localStorage.setItem(DB_KEY, JSON.stringify(cloned));
+    } catch (err2) {
+      console.warn('[OfflineDB] Secondary quota fallback failed:', err2);
+    }
+  }
+}
+
+function getStoredPasswords(): Record<string, string> {
+  let map: Record<string, string> = {};
+  try {
+    const raw = localStorage.getItem(PASSWORDS_KEY);
+    if (raw) map = JSON.parse(raw);
+  } catch (_) {}
+
+  const defaults: Record<string, string> = {
+    'TAMANSISWA': 'TAMVESTA123',
+    'bambang.kepsek': 'Tamvesta!B2601',
+    'titus.yayasan': 'Tamvesta!T2602',
+    'margaretha.h': 'Tamvesta!M2603',
+    'margaretha': 'Tamvesta!M2603',
+    'bambang.operator': 'Tamvesta!B2604',
+    'haliza.tu': 'Tamvesta!H2605',
+    'haliza.admin': 'Tamvesta!H2605',
+    'haliza': 'Tamvesta!H2605',
+    'tata.usaha': 'Tamvesta!H2605',
+    'maidarlis': 'Tamvesta!M2606',
+    'fatimah': 'Tamvesta!F2607',
+    'endang.daryanti': 'Tamvesta!E2608',
+    'kristina.manurung': 'Tamvesta!K2609',
+    'nia.damayanti': 'Tamvesta!N2610',
+    'nelly.silitonga': 'Tamvesta!N2611',
+    'dina.nurziana': 'Tamvesta!D2612',
+    'nur.aini': 'Tamvesta!N2613',
+    'siska.permatasari': 'Tamvesta!S2614',
+    'risky': 'Tamvesta!R2615',
+    'masni': 'Tamvesta!M2616',
+    'angga.satpam': 'Tamvesta!A2617',
+    'Tamvesta': 'TAMVESTATAMSIS',
+    'tamvesta': 'TAMVESTATAMSIS',
+  };
+
+  if (Array.isArray((defaultData as any).users)) {
+    (defaultData as any).users.forEach((u: any) => {
+      if (u.username && u.initialPassword) {
+        defaults[u.username] = u.initialPassword;
+        defaults[u.username.toLowerCase()] = u.initialPassword;
+      }
+    });
+  }
+
+  return { ...defaults, ...map };
+}
+
+function savePassword(username: string, pass: string) {
+  const map = getStoredPasswords();
+  const clean = username.trim().toLowerCase().replace(/^@+/, '');
+  map[username] = pass;
+  map[username.toLowerCase()] = pass;
+  map[clean] = pass;
+  map[`@${clean}`] = pass;
+  localStorage.setItem(PASSWORDS_KEY, JSON.stringify(map));
+}
+
+export const offlineStore = {
+  getCurrentUserId(): string | null {
+    return localStorage.getItem(CURRENT_USER_KEY);
+  },
+
+  setCurrentUserId(id: string | null) {
+    if (id) {
+      localStorage.setItem(CURRENT_USER_KEY, id);
+    } else {
+      localStorage.removeItem(CURRENT_USER_KEY);
+    }
+  },
+
+  saveUser(user: User) {
+    this.syncUserFromServer(user);
+  },
+
+  syncUserFromServer(user: User) {
+    if (!user || !user.id) return;
+    const db = loadDB();
+    if (!Array.isArray(db.users)) db.users = [];
+    const cleanUser = (user.username || '').toLowerCase().replace(/^@+/, '');
+    const idx = db.users.findIndex(
+      (u) => u.id === user.id || (u.username || '').toLowerCase().replace(/^@+/, '') === cleanUser
+    );
+    const perm = getPermanentAvatar(user.id, user.username) || (idx >= 0 ? db.users[idx].avatarUrl : null);
+    const finalAvatar = user.avatarUrl && !user.avatarUrl.includes('dicebear.com') ? user.avatarUrl : (perm || user.avatarUrl);
+    const permBio = getPermanentBio(user.id, user.username) || (idx >= 0 ? db.users[idx].bio : null);
+    const finalBio = user.bio && user.bio.trim() ? user.bio : (permBio || user.bio);
+    if (finalAvatar) savePermanentAvatar(user.id, user.username, finalAvatar);
+    if (finalBio !== undefined && finalBio !== null) savePermanentBio(user.id, user.username, finalBio);
+    const existingUser = idx >= 0 ? db.users[idx] : null;
+    const finalPhone = user.phone || existingUser?.phone;
+    const finalEmail = user.email || existingUser?.email;
+    const userToSave = { ...user, avatarUrl: finalAvatar, bio: finalBio, phone: finalPhone, email: finalEmail };
+    if (idx >= 0) {
+      db.users[idx] = { ...db.users[idx], ...userToSave };
+    } else {
+      db.users.push(userToSave);
+    }
+    saveDB(db);
+  },
+
+  saveStudentFromServer(serverStudent: User, password?: string) {
+    if (!serverStudent || !serverStudent.id) return;
+    const db = loadDB();
+    if (!Array.isArray(db.users)) db.users = [];
+    const cleanUsername = (serverStudent.username || '').toLowerCase().replace(/^@+/, '');
+    const idx = db.users.findIndex(
+      (u) => u.id === serverStudent.id || (u.username || '').toLowerCase().replace(/^@+/, '') === cleanUsername
+    );
+    const initialPass = password || serverStudent.initialPassword || (serverStudent as any).password || '';
+    const studentToSave: User = {
+      ...serverStudent,
+      username: cleanUsername,
+      initialPassword: initialPass,
+      password: initialPass,
+      mustChangePassword: false,
+    };
+    // Simpan ke backup permanen agar tidak pernah hilang
+    const backupList = getAdminRegisteredStudentsBackup().filter(
+      (s) => s.id !== studentToSave.id && (s.username || '').toLowerCase().replace(/^@+/, '') !== cleanUsername
+    );
+    backupList.unshift(studentToSave);
+    saveAdminRegisteredStudentsBackup(backupList);
+
+    // Remove from deletedUserIds
+    (db as any).deletedUserIds = ((db as any).deletedUserIds || []).filter(
+      (dId: string) => dId !== serverStudent.id && dId !== cleanUsername && dId !== `@${cleanUsername}`
+    );
+
+    if (idx >= 0) {
+      db.users[idx] = { ...db.users[idx], ...studentToSave };
+    } else {
+      db.users.unshift(studentToSave);
+    }
+    if (initialPass) {
+      savePassword(cleanUsername, initialPass);
+      savePassword(serverStudent.username, initialPass);
+    }
+    saveDB(db);
+  },
+
+  syncStudentEntity(serverStudent: User) {
+    if (!serverStudent || !serverStudent.id) return;
+    const db = loadDB();
+    if (!Array.isArray(db.users)) db.users = [];
+    const cleanUsername = (serverStudent.username || '').toLowerCase().replace(/^@+/, '');
+    const idx = db.users.findIndex(
+      (u) => u.id === serverStudent.id || (u.username || '').toLowerCase().replace(/^@+/, '') === cleanUsername
+    );
+    if (idx >= 0) {
+      db.users[idx] = { ...db.users[idx], ...serverStudent };
+    } else {
+      db.users.push(serverStudent);
+    }
+    saveDB(db);
+  },
+
+  /**
+   * Merge seluruh user dari server ke localStorage.
+   * Dipanggil saat login gagal di lokal (HP baru / user belum ada di localStorage).
+   * Password dari initialPassword / password field disimpan agar bisa login offline.
+   */
+  mergeUsersFromServer(serverUsers: User[]) {
+    if (!Array.isArray(serverUsers) || serverUsers.length === 0) return;
+    const db = loadDB();
+    if (!Array.isArray(db.users)) db.users = [];
+    const deletedIds: string[] = (db as any).deletedUserIds || [];
+    serverUsers.forEach((su) => {
+      if (!su || !su.id) return;
+      const cleanUn = (su.username || '').toLowerCase().replace(/^@+/, '');
+      const isDeleted = deletedIds.some(
+        (d) => d === su.id || d.toLowerCase() === cleanUn
+      );
+      if (isDeleted) return;
+      const idx = db.users.findIndex(
+        (u) => u.id === su.id || (u.username || '').toLowerCase().replace(/^@+/, '') === cleanUn
+      );
+      const initialPass = su.initialPassword || (su as any).password;
+      const merged = {
+        ...su,
+        mustChangePassword: false,
+        initialPassword: initialPass || su.initialPassword,
+        password: initialPass || (su as any).password,
+        isActive: su.isActive !== false,
+      };
+      if (idx >= 0) {
+        // Merge data server terbaru ke dalam lokal
+        db.users[idx] = {
+          ...db.users[idx],
+          ...merged,
+          initialPassword: initialPass || db.users[idx].initialPassword,
+          password: initialPass || db.users[idx].password,
+          mustChangePassword: false,
+        };
+      } else {
+        db.users.push(merged);
+      }
+      if (initialPass) {
+        savePassword(cleanUn, initialPass);
+        savePassword(su.username, initialPass);
+      }
+    });
+    saveDB(db);
+  },
+
+  findUser(username: string, candidatePassword?: string): User | undefined {
+    const db = loadDB();
+    const raw = (username || '').trim();
+    const term = raw.toLowerCase().replace(/^@+/, '');
+    const alphaNumericTerm = term.replace(/[^a-z0-9]/g, '');
+
+    // 0. Bambang Sapto Nugroho (Kepsek SMP vs Operator)
+    if (term === 'bambang.operator' || term === 'operator' || term === 'dapodik' || term === 'operator.dapodik') {
+      const operator = db.users.find((u) => (u.username || '').toLowerCase() === 'bambang.operator');
+      if (operator) return operator;
+    }
+    if (term === 'bambang.kepsek' || term === 'kepsek.smp' || term === 'bambang.smp' || term === 'st.bambang') {
+      const kepsek = db.users.find((u) => (u.username || '').toLowerCase() === 'bambang.kepsek');
+      if (kepsek) return kepsek;
+    }
+    if (
+      ['bambang', 'bambang sapto nugroho', 'st bambang sapto nugroho s.pd'].includes(term) ||
+      alphaNumericTerm === 'bambang' ||
+      alphaNumericTerm === 'bambangsaptonugroho' ||
+      alphaNumericTerm === 'stbambangsaptonugrohospd'
+    ) {
+      const kepsek = db.users.find((u) => (u.username || '').toLowerCase() === 'bambang.kepsek');
+      const operator = db.users.find((u) => (u.username || '').toLowerCase() === 'bambang.operator');
+      if (candidatePassword) {
+        const pLower = candidatePassword.trim().toLowerCase();
+        if (operator && (pLower === 'tamvesta!b2604' || pLower === (operator.password || '').toLowerCase() || pLower === (operator.initialPassword || '').toLowerCase())) {
+          return operator;
+        }
+        if (kepsek) return kepsek;
+      }
+      if (term.includes('operator') || term.includes('dapodik')) return operator || kepsek;
+      return kepsek || operator;
+    }
+
+    // 0.5 Support TAMVESTA / Developer Official Account
+    if (
+      ['support', 'tamvesta', 'developer', 'cs', 'bantuan', 'support.tamvesta'].includes(term) ||
+      alphaNumericTerm === 'support' ||
+      alphaNumericTerm === 'tamvesta'
+    ) {
+      const support = db.users.find((u) => u.role === 'support' || (u.username || '').toLowerCase() === 'tamvesta');
+      const admin = db.users.find((u) => u.username === 'TAMANSISWA' || u.role === 'admin');
+      if (candidatePassword) {
+        const pUpper = candidatePassword.trim().toUpperCase();
+        if (pUpper === 'TAMVESTATAMSIS' && support) return support;
+        if (pUpper === 'TAMVESTA123' && admin) return admin;
+      }
+      if (term === 'tamvesta' || term === 'support' || alphaNumericTerm === 'tamvesta' || alphaNumericTerm === 'support') {
+        if (support) return support;
+      }
+    }
+
+    // 1. Admin Aliases (TAMANSISWA)
+    if (['admin', 'tamansiswa', 'administrator', 'admin.tamansiswa', 'admin.utama'].includes(term) || alphaNumericTerm === 'admin' || alphaNumericTerm === 'tamansiswa') {
+      const admin = db.users.find((u) => u.username === 'TAMANSISWA' || u.role === 'admin');
+      if (admin) return admin;
+    }
+
+    // 2. Titus / Yayasan Aliases
+    if (['titus', 'titus.yayasan', 'titus wahyu diatmiko', 'yayasan', 'pemimpin', 'pemimpin.tamansiswa'].includes(term) || alphaNumericTerm === 'titus' || alphaNumericTerm === 'tituswahyudiatmiko') {
+      const titus = db.users.find((u) => (u.username || '').toLowerCase() === 'titus.yayasan');
+      if (titus) return titus;
+    }
+
+    // 3. Margaretha Aliases
+    if (['margaretha.h', 'margaretha', 'margaretha.handriani', 'margaretha.hendriani', 'margarethahandriani', 'margarethahendriani', 'margaretha.sd', 'margaretha.kepsek', 'kepsek.sd'].includes(term) || alphaNumericTerm.startsWith('margaretha')) {
+      const margaretha = db.users.find((u) => (u.username || '').toLowerCase() === 'margaretha.h' || (u.name || '').toLowerCase().includes('margaretha'));
+      if (margaretha) return margaretha;
+    }
+
+    // 4. Haliza / Tata Usaha Aliases
+    if (['haliza.tu', 'haliza.admin', 'haliza', 'tata.usaha', 'tatausaha', 'tu'].includes(term) || alphaNumericTerm === 'halizatu' || alphaNumericTerm === 'tatausaha') {
+      const haliza = db.users.find((u) => (u.username || '').toLowerCase() === 'haliza.tu' || (u.username || '').toLowerCase() === 'haliza.admin' || u.role === 'tata_usaha');
+      if (haliza) return haliza;
+    }
+
+    // 5. Exact or Cleaned Username match
+    const foundByUsername = db.users.find((u) => {
+      if (u.isActive === false) return false;
+      const uName = (u.username || '').trim().toLowerCase().replace(/^@+/, '');
+      if (!uName) return false;
+      if (uName === term) return true;
+      if (alphaNumericTerm && uName.replace(/[^a-z0-9]/g, '') === alphaNumericTerm) return true;
+      return false;
+    });
+    if (foundByUsername) return foundByUsername;
+
+    // 6. Student shortcode patterns (e.g. "7a001", "7a.001", "smp7a001", "siswa7a001" -> matches "siswa.smp7a.001")
+    const cleanStudentPattern = term.replace(/^(siswa[._]?)?(smp|sd)?/, '').replace(/[^a-z0-9]/g, '');
+    if (cleanStudentPattern.length >= 3) {
+      const foundStudent = db.users.find((u) => {
+        if (u.isActive === false || u.role !== 'siswa') return false;
+        const uPattern = (u.username || '').toLowerCase().replace(/^(siswa[._]?)?(smp|sd)?/, '').replace(/[^a-z0-9]/g, '');
+        return uPattern && uPattern === cleanStudentPattern;
+      });
+      if (foundStudent) return foundStudent;
+    }
+
+    // 7. Full Name match
+    const foundByName = db.users.find((u) => {
+      if (u.isActive === false) return false;
+      const fullName = (u.name || '').trim().toLowerCase();
+      if (!fullName) return false;
+      if (fullName === term) return true;
+      const alphaFullName = fullName.replace(/[^a-z0-9]/g, '');
+      if (alphaNumericTerm && alphaFullName === alphaNumericTerm) return true;
+      if (term.length >= 4 && (fullName.includes(term) || term.includes(fullName))) return true;
+      return false;
+    });
+    if (foundByName) return foundByName;
+
+    // 8. Email match
+    const foundByEmail = db.users.find((u) => {
+      if (u.isActive === false) return false;
+      return u.email && u.email.trim().toLowerCase() === term;
+    });
+    if (foundByEmail) return foundByEmail;
+
+    // 9. Phone match
+    const cleanPhone = raw.replace(/[^0-9]/g, '');
+    if (cleanPhone.length >= 7) {
+      const foundByPhone = db.users.find((u) => {
+        if (u.isActive === false || !u.phone) return false;
+        const uPhone = u.phone.trim().replace(/[^0-9]/g, '');
+        return uPhone === cleanPhone || uPhone.endsWith(cleanPhone) || cleanPhone.endsWith(uPhone);
+      });
+      if (foundByPhone) return foundByPhone;
+    }
+
+    // 10. NISN match
+    const foundByNisn = db.users.find((u) => {
+      if (u.isActive === false) return false;
+      return (u as any).nisn && String((u as any).nisn).trim() === raw;
+    });
+    if (foundByNisn) return foundByNisn;
+
+    return undefined;
+  },
+
+  findUserById(id: string): User | undefined {
+    const db = loadDB();
+    if (!id) return undefined;
+    return db.users.find((u) => u.id === id);
+  },
+
+  getCurrentUser(): User | null {
+    const id = this.getCurrentUserId();
+    if (!id) return null;
+    const db = loadDB();
+    const found = db.users.find((u) => u.id === id);
+    return found || null;
+  },
+
+  login(credentials: { username: string; password: string }) {
+    const inputPass = credentials.password.trim();
+    const cleanUsername = (credentials.username || '').toLowerCase().trim().replace(/^@+/, '');
+
+    // Cek apakah akun berstatus pending ACC atau nonaktif
+    const db = loadDB();
+    const pendingCandidate = db.users.find(
+      (u) => (u.username || '').toLowerCase().replace(/^@+/, '') === cleanUsername && u.isActive === false
+    );
+    if (pendingCandidate) {
+      if (pendingCandidate.registrationStatus === 'pending') {
+        throw new Error(
+          `Pendaftaran akun Anda (${pendingCandidate.name}) dengan No. Registrasi ${pendingCandidate.registrationNumber || '-'} sedang MENUNGGU PERSETUJUAN (ACC) dari Admin / Tata Usaha (TU) Tamansiswa Batam. Mohon tunggu verifikasi sekolah.`
+        );
+      }
+      if (pendingCandidate.registrationStatus === 'rejected') {
+        throw new Error(
+          'Pendaftaran akun Anda belum dapat disetujui oleh pihak sekolah. Silakan hubungi bagian Tata Usaha Perguruan Tamansiswa Batam.'
+        );
+      }
+      throw new Error('Akun Anda dinonaktifkan oleh Administrator. Silakan hubungi bagian tata usaha sekolah.');
+    }
+
+    const user = this.findUser(credentials.username, inputPass);
+
+    if (!user) {
+      throw new Error('Username atau kata sandi tidak valid');
+    }
+
+    const passwords = getStoredPasswords();
+    const userCleanUsername = (user.username || '').toLowerCase().replace(/^@+/, '');
+    const userStoredPass = passwords[userCleanUsername] || passwords[user.username] || passwords[`@${userCleanUsername}`] || (user as any).password;
+    const isPasswordChanged = Boolean((user as any).passwordChanged);
+
+    let isMatch = false;
+    if (isPasswordChanged) {
+      // Hanya sandi yang baru diubah yang berlaku
+      const changedPass = userStoredPass || passwords[userCleanUsername] || passwords[user.username];
+      if (changedPass && (changedPass === inputPass || changedPass.toLowerCase() === inputPass.toLowerCase())) {
+        isMatch = true;
+      }
+    } else {
+      const candidatePasswords = [
+        userStoredPass,
+        user.initialPassword,
+        (user as any).password,
+        passwords[user.username],
+        passwords[user.username.toLowerCase()],
+        passwords[cleanUsername],
+        passwords[`@${cleanUsername}`],
+        // Sandi awal resmi dokumen staf & admin
+        (user.role === 'admin' || user.username === 'TAMANSISWA') ? 'TAMVESTA123' : null,
+        (user.role === 'admin' || user.username === 'TAMANSISWA') ? 'TAMANSISWA' : null,
+        user.username === 'bambang.kepsek' ? 'Tamvesta!B2601' : null,
+        user.username === 'titus.yayasan' ? 'Tamvesta!T2602' : null,
+        (user.username === 'margaretha.h' || (user.name || '').toLowerCase().includes('margaretha')) ? 'Tamvesta!M2603' : null,
+        user.username === 'bambang.operator' ? 'Tamvesta!B2604' : null,
+        user.role === 'tata_usaha' || user.username === 'haliza.tu' ? 'Tamvesta!H2605' : null,
+        user.username === 'maidarlis' ? 'Tamvesta!M2606' : null,
+        user.username === 'fatimah' ? 'Tamvesta!F2607' : null,
+        user.username === 'endang.daryanti' ? 'Tamvesta!E2608' : null,
+        user.username === 'kristina.manurung' ? 'Tamvesta!K2609' : null,
+        user.username === 'nia.damayanti' ? 'Tamvesta!N2610' : null,
+        user.username === 'nelly.silitonga' ? 'Tamvesta!N2611' : null,
+        user.username === 'dina.nurziana' ? 'Tamvesta!D2612' : null,
+        user.username === 'nur.aini' ? 'Tamvesta!N2613' : null,
+        user.username === 'siska.permatasari' ? 'Tamvesta!S2614' : null,
+        user.username === 'risky' ? 'Tamvesta!R2615' : null,
+        user.username === 'masni' ? 'Tamvesta!M2616' : null,
+        user.username === 'angga.satpam' ? 'Tamvesta!A2617' : null,
+        (user.role === 'support' || user.username.toLowerCase() === 'tamvesta') ? 'TAMVESTATAMSIS' : null,
+      ].filter(Boolean);
+
+      isMatch = candidatePasswords.some((p) => {
+        if (!p) return false;
+        const pTrim = String(p).trim();
+        return pTrim === inputPass || pTrim.toLowerCase() === inputPass.toLowerCase();
+      }) || ((user.role === 'admin' || user.username === 'TAMANSISWA') && (inputPass.toLowerCase() === 'tamvesta123' || inputPass.toUpperCase() === 'TAMANSISWA'));
+    }
+
+    if (!isMatch) {
+      throw new Error('Username atau kata sandi tidak valid');
+    }
+
+    this.setCurrentUserId(user.id);
+    const token = 'offline_token_' + user.id;
+    // Do not force password change: students can login directly and forever with password set by admin
+    const mustChange = false;
+    const cleanUser = { ...user, mustChangePassword: false };
+    return { token, user: cleanUser, mustChangePassword: false };
+  },
+
+  getMe() {
+    const user = this.getCurrentUser();
+    if (!user) {
+      throw new Error('Sesi berakhir, silakan login kembali');
+    }
+    // Students can stay logged in forever without being forced to change password
+    const mustChange = false;
+    const cleanUser = { ...user, mustChangePassword: false };
+    return { user: cleanUser, mustChangePassword: false };
+  },
+
+  updateProfile(data: { avatarUrl?: string; bio?: string; phone?: string; email?: string }) {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    if (!user) throw new Error('Pengguna tidak ditemukan');
+
+    const target = db.users.find((u) => u.id === user.id);
+    if (!target) throw new Error('Pengguna tidak ditemukan');
+
+    if (data.avatarUrl !== undefined) {
+      target.avatarUrl = data.avatarUrl;
+      savePermanentAvatar(target.id, target.username, data.avatarUrl);
+    }
+    if (data.bio !== undefined) {
+      target.bio = data.bio;
+      savePermanentBio(target.id, target.username, data.bio);
+    }
+    if (data.phone !== undefined) target.phone = data.phone;
+    if (data.email !== undefined) target.email = data.email;
+    if (target.phone && target.email) {
+      target.contactInfoCompleted = true;
+    }
+
+    // Update author avatar across user's posts & comments
+    (db.posts || []).forEach((p) => {
+      if (p.authorId === user.id && data.avatarUrl !== undefined) {
+        p.authorAvatar = data.avatarUrl;
+      }
+      (p.comments || []).forEach((c) => {
+        if (c.authorId === user.id && data.avatarUrl !== undefined) {
+          c.authorAvatar = data.avatarUrl;
+        }
+      });
+    });
+
+    saveDB(db);
+    return { message: 'Profil berhasil diperbarui', user: target };
+  },
+
+  updateUsername(newUsername: string) {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    if (!user) throw new Error('Pengguna tidak ditemukan');
+    if (user.role === 'admin') throw new Error('Username administrator tidak dapat diubah');
+
+    const trimmed = newUsername.trim().toLowerCase();
+    if (trimmed.length < 3) throw new Error('Username minimal 3 karakter');
+    if (db.users.some((u) => u.id !== user.id && u.username.toLowerCase() === trimmed)) {
+      throw new Error('Username sudah digunakan pengguna lain');
+    }
+
+    const target = db.users.find((u) => u.id === user.id);
+    if (!target) throw new Error('Pengguna tidak ditemukan');
+
+    const oldUsername = target.username;
+    target.username = trimmed;
+    target.lastUsernameChange = new Date().toISOString();
+
+    const pmap = getStoredPasswords();
+    if (pmap[oldUsername]) {
+      pmap[trimmed] = pmap[oldUsername];
+      delete pmap[oldUsername];
+      localStorage.setItem(PASSWORDS_KEY, JSON.stringify(pmap));
+    }
+
+    (db.posts || []).forEach((p) => {
+      if (p.authorId === user.id) p.authorUsername = trimmed;
+    });
+
+    saveDB(db);
+    return { message: 'Username berhasil diperbarui', user: target, token: 'offline_token_' + target.id };
+  },
+
+  changePassword(oldPass: string, newPass: string) {
+    const user = this.getCurrentUser();
+    if (!user) throw new Error('Pengguna tidak ditemukan');
+
+    const passwords = getStoredPasswords();
+    const currentPass = passwords[user.username] || passwords[user.username.toLowerCase()] || user.initialPassword || (user as any).password || (user.role === 'admin' ? 'TAMVESTA123' : '');
+
+    if (oldPass !== currentPass) {
+      throw new Error('Kata sandi saat ini salah');
+    }
+    if (newPass.length < 6) {
+      throw new Error('Kata sandi baru minimal 6 karakter');
+    }
+
+    savePassword(user.username, newPass);
+    const db = loadDB();
+    const target = db.users.find((u) => u.id === user.id);
+    if (target) {
+      target.mustChangePassword = false;
+      saveDB(db);
+    }
+
+    return { message: 'Kata sandi berhasil diubah', user: target || user };
+  },
+
+  resetStudentPassword(studentId: string, newPass: string) {
+    const db = loadDB();
+    const target = db.users.find((u) => u.id === studentId);
+    if (target) {
+      savePassword(target.username, newPass);
+      target.mustChangePassword = false;
+      saveDB(db);
+    }
+    return { message: 'Kata sandi berhasil direset' };
+  },
+
+  savePostDirect(post: StudentPost) {
+    const db = loadDB();
+    if (!Array.isArray(db.posts)) db.posts = [];
+    const idx = db.posts.findIndex((p) => p.id === post.id);
+    if (idx > -1) {
+      db.posts[idx] = { ...db.posts[idx], ...post };
+    } else {
+      db.posts.unshift(post);
+    }
+    saveDB(db);
+  },
+
+  setPostsList(posts: StudentPost[]) {
+    const db = loadDB();
+    db.posts = posts;
+    saveDB(db);
+  },
+
+  saveStoryDirect(story: Story) {
+    const db = loadDB();
+    if (!Array.isArray(db.stories)) db.stories = [];
+    const idx = db.stories.findIndex((s) => s.id === story.id);
+    if (idx > -1) {
+      db.stories[idx] = { ...db.stories[idx], ...story };
+    } else {
+      db.stories.unshift(story);
+    }
+    saveDB(db);
+  },
+
+  setStoriesList(stories: Story[]) {
+    const db = loadDB();
+    db.stories = stories;
+    saveDB(db);
+  },
+
+  // Posts (Feed Siswa - Hanya diisi oleh akun terdaftar)
+  getPosts(): StudentPost[] {
+    const db = loadDB();
+    if (!Array.isArray(db.posts)) db.posts = [];
+    const users = db.users || [];
+    return (db.posts || [])
+      .filter((p) => !p.id.startsWith('post_seed_'))
+      .map((p) => {
+        const author = users.find((u) => u.id === p.authorId || u.username.toLowerCase() === p.authorUsername.toLowerCase());
+        const isDev = author ? (author.isDeveloper || author.role === 'support' || author.username.toLowerCase() === 'tamvesta') : p.authorUsername?.toLowerCase() === 'tamvesta';
+        return {
+          ...p,
+          authorIsVerified: author ? !!author.isVerified || isDev : !!(p as any).authorIsVerified,
+          authorIsDeveloper: isDev,
+          authorBadgeType: (isDev ? 'developer' : ((author?.isVerified || (p as any).authorIsVerified) ? 'blue' : undefined)) as ('blue' | 'yellow' | 'developer' | undefined),
+          authorIsAlumni: author ? !!author.isAlumni : !!(p as any).authorIsAlumni,
+        };
+      })
+      .sort((a, b) => {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+  },
+
+  togglePinPost(postId: string): StudentPost {
+    const db = loadDB();
+    const curUser = this.getCurrentUser();
+    const isSupport = curUser?.role === 'support' || curUser?.isDeveloper || (curUser?.username || '').toLowerCase() === 'tamvesta';
+    if (!isSupport) {
+      throw new Error('Fitur sematkan postingan (pinned) hanya dapat digunakan oleh akun Support TAMVESTA.');
+    }
+    if (!Array.isArray(db.posts)) db.posts = [];
+    const post = db.posts.find((p) => p.id === postId);
+    if (!post) throw new Error('Postingan tidak ditemukan.');
+    post.isPinned = !post.isPinned;
+    saveDB(db);
+    return post;
+  },
+
+  createPost(data: { caption: string; mediaUrl?: string; mediaType?: 'photo' | 'video'; isPinned?: boolean }) {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    if (!user) throw new Error('Login diperlukan');
+
+    const isDev =
+      user.role === 'support' ||
+      user.isDeveloper ||
+      user.username.toLowerCase() === 'tamvesta' ||
+      user.id === 'user_support_tamvesta';
+
+    const newPost: StudentPost = {
+      id: 'post_' + Date.now(),
+      authorId: user.id,
+      authorName: user.name,
+      authorUsername: user.username,
+      authorAvatar: user.avatarUrl || (isDev ? '/assets/tamvesta_mascot.jpg' : undefined),
+      authorKelas: isDev ? 'Developer & Support Resmi' : (user.kelas || ''),
+      authorIsVerified: !!user.isVerified || isDev,
+      authorIsDeveloper: isDev,
+      authorBadgeType: isDev ? 'developer' : (user.isVerified ? 'blue' : undefined),
+      authorIsAlumni: !!user.isAlumni,
+      isPinned: isDev ? (data.isPinned !== false) : !!data.isPinned,
+      caption: data.caption,
+      mediaUrl: data.mediaUrl,
+      mediaType: data.mediaType ?? 'none',
+      likes: [],
+      comments: [],
+      createdAt: new Date().toISOString(),
+    };
+
+    db.posts = [newPost, ...(db.posts || [])];
+
+    // Buat notifikasi resmi untuk akun support agar masuk ke feed & notifikasi siswa
+    if (isDev) {
+      if (!Array.isArray(db.notifications)) db.notifications = [];
+      db.notifications.unshift({
+        id: 'notif_support_post_' + Date.now(),
+        title: '📢 Pesan Resmi Support TAMVESTA',
+        message: data.caption.length > 90 ? data.caption.substring(0, 90) + '...' : data.caption,
+        type: 'announcement',
+        isImportant: true,
+        linkType: 'announcement',
+        linkId: newPost.id,
+        createdAt: new Date().toISOString(),
+        readBy: [],
+        deletedBy: [],
+      });
+    }
+
+    saveDB(db);
+    return newPost;
+  },
+
+  toggleLikePost(postId: string) {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    if (!user) throw new Error('Login diperlukan');
+
+    const post = (db.posts || []).find((p) => p.id === postId);
+    if (!post) throw new Error('Postingan tidak ditemukan');
+
+    if (!Array.isArray(post.likes)) post.likes = [];
+    const index = post.likes.indexOf(user.id);
+    const isLiked = index > -1;
+
+    if (isLiked) {
+      post.likes.splice(index, 1);
+    } else {
+      post.likes.push(user.id);
+    }
+
+    saveDB(db);
+    return { isLiked: !isLiked, likesCount: post.likes.length };
+  },
+
+  addComment(
+    postId: string,
+    text: string,
+    replyData?: {
+      replyToCommentId?: string;
+      replyToUsername?: string;
+      replyToAuthorName?: string;
+      replyToAuthorId?: string;
+    }
+  ) {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    if (!user) throw new Error('Login diperlukan');
+
+    const post = (db.posts || []).find((p) => p.id === postId);
+    if (!post) throw new Error('Postingan tidak ditemukan');
+
+    if (!Array.isArray(post.comments)) post.comments = [];
+    const newComment: PostComment = {
+      id: 'comment_' + Date.now(),
+      postId,
+      authorId: user.id,
+      authorName: user.name,
+      authorUsername: user.username,
+      authorAvatar: user.avatarUrl,
+      content: text.trim(),
+      replyToCommentId: replyData?.replyToCommentId,
+      replyToUsername: replyData?.replyToUsername,
+      replyToAuthorName: replyData?.replyToAuthorName,
+      replyToAuthorId: replyData?.replyToAuthorId,
+      createdAt: new Date().toISOString(),
+    };
+
+    post.comments.push(newComment);
+
+    // Kirim notifikasi lokal jika membalas komentar atau mengomentari postingan
+    if (!Array.isArray((db as any).notifications)) (db as any).notifications = [];
+    if (replyData?.replyToAuthorId && replyData.replyToAuthorId !== user.id) {
+      (db as any).notifications.unshift({
+        id: 'notif_' + Date.now() + '_rep',
+        title: 'Balasan Komentar',
+        message: `${user.name} (@${user.username}) membalas komentar Anda: "${text.trim().slice(0, 80)}"`,
+        type: 'social_reply',
+        linkType: 'post',
+        linkId: postId,
+        targetUserId: replyData.replyToAuthorId,
+        readBy: [],
+        deletedBy: [],
+        createdAt: new Date().toISOString(),
+      });
+    }
+    if (post.authorId !== user.id && post.authorId !== replyData?.replyToAuthorId) {
+      (db as any).notifications.unshift({
+        id: 'notif_' + Date.now() + '_com',
+        title: 'Komentar Baru di Postingan Anda',
+        message: `${user.name} (@${user.username}) mengomentari postingan Anda: "${text.trim().slice(0, 80)}"`,
+        type: 'social_comment',
+        linkType: 'post',
+        linkId: postId,
+        targetUserId: post.authorId,
+        readBy: [],
+        deletedBy: [],
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    saveDB(db);
+    return newComment;
+  },
+
+  updatePost(postId: string, caption: string) {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    if (!user) throw new Error('Login diperlukan');
+
+    const post = (db.posts || []).find((p) => p.id === postId);
+    if (!post) throw new Error('Postingan tidak ditemukan');
+    if (post.authorId !== user.id && user.role !== 'admin') {
+      throw new Error('Anda tidak memiliki izin mengedit postingan ini');
+    }
+
+    post.caption = caption;
+    saveDB(db);
+    return post;
+  },
+
+  deletePost(postId: string) {
+    const db = loadDB();
+    db.posts = (db.posts || []).filter((p) => p.id !== postId);
+    (db as any).deletedPostIds = (db as any).deletedPostIds || [];
+    if (!(db as any).deletedPostIds.includes(postId)) {
+      (db as any).deletedPostIds.push(postId);
+    }
+    saveDB(db);
+    return { message: 'Postingan berhasil dihapus' };
+  },
+
+  toggleFollow(targetUserId: string) {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    if (!user) throw new Error('Login diperlukan');
+    if (user.id === targetUserId) throw new Error('Tidak dapat mengikuti diri sendiri');
+
+    const currentTarget = db.users.find((u) => u.id === user.id);
+    const followedTarget = db.users.find((u) => u.id === targetUserId);
+    if (!currentTarget || !followedTarget) throw new Error('Pengguna tidak ditemukan');
+
+    if (!Array.isArray(currentTarget.following)) currentTarget.following = [];
+    if (!Array.isArray(followedTarget.followers)) followedTarget.followers = [];
+
+    const isFollowing = currentTarget.following.includes(targetUserId);
+
+    if (isFollowing) {
+      currentTarget.following = currentTarget.following.filter((id) => id !== targetUserId);
+      followedTarget.followers = followedTarget.followers.filter((id) => id !== user.id);
+    } else {
+      currentTarget.following.push(targetUserId);
+      followedTarget.followers.push(user.id);
+    }
+
+    saveDB(db);
+    return {
+      isFollowing: !isFollowing,
+      followersCount: followedTarget.followers.length,
+      followingCount: currentTarget.following.length,
+    };
+  },
+
+  getUserProfile(username: string) {
+    const db = loadDB();
+    const currentUser = this.getCurrentUser();
+    const targetUser = db.users.find((u) => u.username.toLowerCase() === username.toLowerCase());
+    if (!targetUser) throw new Error('Pengguna tidak ditemukan');
+
+    const posts = (db.posts || []).filter((p) => p.authorId === targetUser.id);
+    const followers = Array.isArray(targetUser.followers) ? targetUser.followers : [];
+    const following = Array.isArray(targetUser.following) ? targetUser.following : [];
+    const isSelf = currentUser ? currentUser.id === targetUser.id : false;
+    const isFollowing = currentUser ? followers.includes(currentUser.id) : false;
+
+    return {
+      user: {
+        id: targetUser.id,
+        name: targetUser.name,
+        username: targetUser.username,
+        avatarUrl: targetUser.avatarUrl,
+        bio: targetUser.bio,
+        role: targetUser.role,
+        classGrade: targetUser.classGrade,
+        classMajor: targetUser.classMajor,
+      },
+      posts,
+      followersCount: followers.length,
+      followingCount: following.length,
+      isSelf,
+      isFollowing,
+    };
+  },
+
+  // Stories (Hanya diisi oleh akun terdaftar - Kedaluwarsa Otomatis 24 Jam)
+  getStories(): Story[] {
+    const db = loadDB();
+    if (!Array.isArray(db.stories)) db.stories = [];
+    return (db.stories || []).filter(
+      (s) => !s.id.startsWith('story_seed_')
+    );
+  },
+
+  createStory(data: { mediaUrl: string; mediaType: 'photo' | 'video'; caption?: string }): Story {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    if (!user) throw new Error('Login diperlukan');
+
+    const now = new Date();
+    // Kedaluwarsa otomatis setelah 24 jam sesuai ketentuan
+    const expires = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+
+    const newStory: Story = {
+      id: 'story_' + Date.now(),
+      authorId: user.id,
+      authorName: user.name,
+      authorUsername: user.username,
+      authorAvatar: user.avatarUrl,
+      authorKelas: user.kelas || '',
+      authorIsVerified: !!user.isVerified,
+      authorIsAlumni: !!user.isAlumni,
+      mediaUrl: data.mediaUrl,
+      mediaType: data.mediaType ?? 'none',
+      caption: data.caption,
+      createdAt: now.toISOString(),
+      expiresAt: expires,
+    };
+
+    db.stories = [newStory, ...(db.stories || [])];
+    saveDB(db);
+    return newStory;
+  },
+
+  deleteStory(id: string) {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    db.stories = (db.stories || []).filter(
+      (s) => s.id !== id || (user && s.authorId !== user.id && user.role !== 'admin')
+    );
+    saveDB(db);
+    return { message: 'Story berhasil dihapus' };
+  },
+
+  // Personal Notes (Arsip Siswa)
+  getNotes(): PersonalNote[] {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    if (!user) return [];
+    return (db.notes || []).filter((n) => n.userId === user.id);
+  },
+
+  createNote(data: { title: string; content: string; color?: string }): PersonalNote {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    if (!user) throw new Error('Login diperlukan');
+
+    const newNote: PersonalNote = {
+      id: 'note_' + Date.now(),
+      userId: user.id,
+      title: data.title,
+      content: data.content,
+      color: data.color || '#F0F9FF',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    db.notes = [newNote, ...(db.notes || [])];
+    saveDB(db);
+    return newNote;
+  },
+
+  updateNote(id: string, data: { title: string; content: string; color?: string }): PersonalNote {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    if (!user) throw new Error('Login diperlukan');
+
+    const note = (db.notes || []).find((n) => n.id === id && n.userId === user.id);
+    if (!note) throw new Error('Catatan tidak ditemukan');
+
+    note.title = data.title;
+    note.content = data.content;
+    if (data.color) note.color = data.color;
+    note.updatedAt = new Date().toISOString();
+
+    saveDB(db);
+    return note;
+  },
+
+  deleteNote(id: string) {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    db.notes = (db.notes || []).filter(
+      (n) => n.id !== id || (user && n.userId !== user.id)
+    );
+    saveDB(db);
+    return { message: 'Catatan berhasil dihapus' };
+  },
+
+  // Quizzes
+  getQuizzes(): Quiz[] {
+    const db = loadDB();
+    const explicit = getExplicitlyDeletedQuizIds();
+    const deleted = (db as any).deletedQuizIds || [];
+    const all = new Set([...explicit, ...deleted]);
+    return (db.quizzes || []).filter((q) => !all.has(q.id));
+  },
+
+  setQuizzes(quizzes: Quiz[]) {
+    if (!Array.isArray(quizzes)) return;
+    const db = loadDB();
+    const explicit = getExplicitlyDeletedQuizIds();
+    const deleted = (db as any).deletedQuizIds || [];
+    const all = new Set([...explicit, ...deleted]);
+    const map = new Map<string, Quiz>();
+    (db.quizzes || []).forEach((q) => { if (q.id && !all.has(q.id)) map.set(q.id, q); });
+    quizzes.forEach((q) => { if (q.id && !all.has(q.id)) map.set(q.id, q); });
+    db.quizzes = Array.from(map.values());
+    saveDB(db);
+  },
+
+  saveQuiz(quiz: Quiz) {
+    if (!quiz || !quiz.id) return;
+    const db = loadDB();
+    if (Array.isArray((db as any).deletedQuizIds)) {
+      (db as any).deletedQuizIds = (db as any).deletedQuizIds.filter((did: string) => did !== quiz.id);
+    }
+    if (!Array.isArray(db.quizzes)) db.quizzes = [];
+    const idx = db.quizzes.findIndex((q) => q.id === quiz.id);
+    if (idx >= 0) {
+      db.quizzes[idx] = { ...db.quizzes[idx], ...quiz };
+    } else {
+      db.quizzes.unshift(quiz);
+    }
+    saveDB(db);
+  },
+
+  deleteQuiz(id: string): boolean {
+    addExplicitlyDeletedQuizId(id);
+    const db = loadDB();
+    const targetId = (id || '').trim().toLowerCase();
+    if (!Array.isArray(db.quizzes)) db.quizzes = [];
+    db.quizzes = db.quizzes.filter((q) => (q.id || '').trim().toLowerCase() !== targetId);
+    if (!Array.isArray((db as any).deletedQuizIds)) {
+      (db as any).deletedQuizIds = [];
+    }
+    if (!(db as any).deletedQuizIds.some((did: string) => did.trim().toLowerCase() === targetId)) {
+      (db as any).deletedQuizIds.push(id);
+    }
+    // Hapus juga data peserta kuis, pelanggaran kuis, dan riwayat attempt terkait secara permanen
+    if (Array.isArray((db as any).quizParticipants)) {
+      (db as any).quizParticipants = (db as any).quizParticipants.filter((p: any) => (p.quizId || '').trim().toLowerCase() !== targetId);
+    }
+    if (Array.isArray((db as any).quizViolations)) {
+      (db as any).quizViolations = (db as any).quizViolations.filter((v: any) => (v.quizId || '').trim().toLowerCase() !== targetId);
+    }
+    if (Array.isArray(db.quizAttempts)) {
+      db.quizAttempts = db.quizAttempts.filter((a) => (a.quizId || '').trim().toLowerCase() !== targetId);
+    }
+    saveDB(db);
+    return true;
+  },
+
+  clearQuizViolations(quizId?: string): void {
+    const db = loadDB();
+    if (!Array.isArray((db as any).quizViolations)) return;
+    if (quizId) {
+      const targetId = (quizId || '').trim().toLowerCase();
+      (db as any).quizViolations = (db as any).quizViolations.filter((v: any) => (v.quizId || '').trim().toLowerCase() !== targetId);
+    } else {
+      (db as any).quizViolations = [];
+    }
+    saveDB(db);
+  },
+
+  deleteQuizViolation(violationId: string): void {
+    const db = loadDB();
+    if (!Array.isArray((db as any).quizViolations)) return;
+    (db as any).quizViolations = (db as any).quizViolations.filter((v: any) => v.id !== violationId);
+    saveDB(db);
+  },
+
+  getQuizById(id: string): Quiz {
+    const db = loadDB();
+    const deleted = (db as any).deletedQuizIds || [];
+    if (deleted.includes(id)) throw new Error('Kuis telah dihapus');
+    const q = (db.quizzes || []).find((x) => x.id === id);
+    if (!q) throw new Error('Kuis tidak ditemukan');
+    return q;
+  },
+
+  verifyQuizToken(tokenOrQuizId: string, tokenOrPassword?: string) {
+    const db = loadDB();
+    const quizzes = db.quizzes || [];
+
+    // Support both signatures: verifyQuizToken(token, password) OR verifyQuizToken(quizId, token)
+    let token = tokenOrQuizId;
+    let password = tokenOrPassword;
+
+    // Check if tokenOrQuizId was passed as a quizId and second param was token
+    const byId = quizzes.find((x) => x.id === tokenOrQuizId);
+    if (byId && tokenOrPassword) {
+      token = tokenOrPassword;
+      password = undefined;
+    }
+
+    const cleanToken = (token || '').trim().toUpperCase();
+    const cleanNoSpecial = cleanToken.replace(/[\s\-_]/g, '');
+
+    const q = quizzes.find((x) => {
+      if (!x.token) return false;
+      const t = x.token.trim().toUpperCase();
+      const tNoSpecial = t.replace(/[\s\-_]/g, '');
+      return t === cleanToken || tNoSpecial === cleanNoSpecial;
+    });
+
+    if (!q) {
+      throw new Error('Token quiz tidak ditemukan atau tidak valid. Silakan periksa kembali token yang diberikan oleh Guru.');
+    }
+
+    if (q.isActive === false || q.status === 'inactive') {
+      throw new Error('Quiz ini sedang tidak aktif atau telah ditutup oleh Guru.');
+    }
+
+    if (q.password && q.password.trim() !== '' && q.password !== password) {
+      throw new Error('Password quiz salah. Silakan hubungi Guru pengampu.');
+    }
+
+    return { success: true, quiz: q };
+  },
+
+  getQuizParticipants(quizId?: string): QuizParticipant[] {
+    const db = loadDB();
+    const list = (db.quizParticipants || []) as QuizParticipant[];
+    if (quizId) {
+      return list.filter((p) => p.quizId === quizId);
+    }
+    return list;
+  },
+
+  recordQuizParticipant(data: {
+    quizId: string;
+    quizTitle: string;
+    studentId: string;
+    studentName: string;
+    studentUsername?: string;
+    studentKelas?: string;
+    tokenUsed: string;
+  }): QuizParticipant {
+    const db = loadDB();
+    if (!db.quizParticipants) db.quizParticipants = [];
+
+    const existingIdx = db.quizParticipants.findIndex(
+      (p: any) => p.quizId === data.quizId && (p.studentId === data.studentId || p.studentName === data.studentName)
+    );
+
+    const participant: QuizParticipant = {
+      id: existingIdx >= 0 ? db.quizParticipants[existingIdx].id : `part_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      quizId: data.quizId,
+      quizTitle: data.quizTitle,
+      studentId: data.studentId,
+      studentName: data.studentName,
+      studentUsername: data.studentUsername,
+      studentKelas: data.studentKelas,
+      tokenUsed: data.tokenUsed,
+      enteredAt: new Date().toISOString(),
+      status: 'in_progress',
+    };
+
+    if (existingIdx >= 0) {
+      db.quizParticipants[existingIdx] = participant;
+    } else {
+      db.quizParticipants.unshift(participant);
+    }
+
+    saveDB(db);
+
+    try {
+      const channel = new BroadcastChannel('tamvesta_quiz_monitor');
+      channel.postMessage({ type: 'PARTICIPANT_ENTERED', participant, timestamp: Date.now() });
+      channel.close();
+    } catch (_) {}
+
+    return participant;
+  },
+
+  completeQuizParticipant(quizId: string, studentId: string, score: number): void {
+    const db = loadDB();
+    if (!db.quizParticipants) return;
+    const participant = db.quizParticipants.find(
+      (p: any) => p.quizId === quizId && (p.studentId === studentId || p.studentName === studentId)
+    );
+    if (participant) {
+      participant.status = 'completed';
+      participant.score = score;
+      saveDB(db);
+      try {
+        const channel = new BroadcastChannel('tamvesta_quiz_monitor');
+        channel.postMessage({ type: 'PARTICIPANT_COMPLETED', quizId, studentId, score, timestamp: Date.now() });
+        channel.close();
+      } catch (_) {}
+    }
+  },
+
+  mergeQuizParticipants(serverParticipants: QuizParticipant[]): void {
+    if (!Array.isArray(serverParticipants)) return;
+    const db = loadDB();
+    const explicitlyDeleted = new Set(getExplicitlyDeletedQuizIds().map((id) => (id || '').trim().toLowerCase()));
+    const validQuizIds = new Set((db.quizzes || []).map((q) => (q.id || '').trim().toLowerCase()));
+    (db as any).quizParticipants = serverParticipants.filter((sp) => {
+      const pqId = (sp.quizId || '').trim().toLowerCase();
+      return !explicitlyDeleted.has(pqId) && validQuizIds.has(pqId);
+    });
+    saveDB(db);
+  },
+
+  getQuizViolations(quizId?: string): QuizViolation[] {
+    const db = loadDB();
+    const explicitlyDeleted = new Set(getExplicitlyDeletedQuizIds().map((id) => (id || '').trim().toLowerCase()));
+    const validQuizIds = new Set((db.quizzes || []).map((q) => (q.id || '').trim().toLowerCase()));
+    let list = ((db as any).quizViolations || []) as QuizViolation[];
+    list = list.filter((v) => {
+      const vqId = (v.quizId || '').trim().toLowerCase();
+      return !explicitlyDeleted.has(vqId) && validQuizIds.has(vqId);
+    });
+    if (quizId) {
+      const targetQuizId = (quizId || '').trim().toLowerCase();
+      return list.filter((v) => (v.quizId || '').trim().toLowerCase() === targetQuizId);
+    }
+    return list;
+  },
+
+  recordQuizViolation(data: Partial<QuizViolation>): QuizViolation {
+    const db = loadDB();
+    if (!db.quizViolations) db.quizViolations = [];
+    const violation: QuizViolation = {
+      id: `viol_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      quizId: data.quizId || '',
+      quizTitle: data.quizTitle || 'Ujian Sekolah',
+      studentId: data.studentId || '',
+      studentName: data.studentName || 'Siswa',
+      studentUsername: data.studentUsername || '',
+      violationType: data.violationType || 'tab_switch',
+      violationDetail: data.violationDetail || 'Membuka tab atau aplikasi lain saat ujian berlangsung',
+      timestamp: new Date().toISOString(),
+    };
+    db.quizViolations.unshift(violation);
+    saveDB(db);
+
+    try {
+      const channel = new BroadcastChannel('tamvesta_quiz_monitor');
+      channel.postMessage({ type: 'VIOLATION_DETECTED', violation, timestamp: Date.now() });
+      channel.close();
+    } catch (_) {}
+
+    return violation;
+  },
+
+  mergeQuizViolations(serverViolations: QuizViolation[]): void {
+    if (!Array.isArray(serverViolations)) return;
+    const db = loadDB();
+    const explicitlyDeleted = new Set(getExplicitlyDeletedQuizIds().map((id) => (id || '').trim().toLowerCase()));
+    const validQuizIds = new Set((db.quizzes || []).map((q) => (q.id || '').trim().toLowerCase()));
+    (db as any).quizViolations = serverViolations.filter((sv) => {
+      const vqId = (sv.quizId || '').trim().toLowerCase();
+      return !explicitlyDeleted.has(vqId) && validQuizIds.has(vqId);
+    });
+    saveDB(db);
+  },
+
+  submitQuizAttempt(quizId: string, answers: Record<string, string>) {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    if (!user) throw new Error('Login diperlukan');
+    const quiz = (db.quizzes || []).find((q) => q.id === quizId);
+    if (!quiz) throw new Error('Kuis tidak ditemukan');
+
+    let correctCount = 0;
+    const detailedAnswers: { questionId: string; selectedOption: number; isCorrect: boolean }[] = [];
+    quiz.questions.forEach((q) => {
+      const selectedStr = answers[q.id];
+      const selected = selectedStr !== undefined ? Number(selectedStr) : -1;
+      const isCorrect = selected === q.correctOptionIndex;
+      if (isCorrect) correctCount++;
+      detailedAnswers.push({ questionId: q.id, selectedOption: selected, isCorrect });
+    });
+
+    const score = Math.round((correctCount / (quiz.questions.length || 1)) * 100);
+    const passed = score >= (quiz.passingScore || 70);
+    const attempt: QuizAttempt = {
+      id: 'attempt_' + Date.now(),
+      quizId,
+      quizTitle: quiz.title,
+      studentId: user.id,
+      studentName: user.name,
+      username: user.username,
+      tokenUsed: quiz.token,
+      answers: detailedAnswers,
+      score,
+      totalQuestions: quiz.questions.length,
+      correctAnswersCount: correctCount,
+      passed,
+      completedAt: new Date().toISOString(),
+    };
+
+    if (!Array.isArray(db.quizAttempts)) db.quizAttempts = [];
+    db.quizAttempts.push(attempt);
+    saveDB(db);
+    return attempt;
+  },
+
+  // Subjects & Books & Announcements
+  getSubjects(): Subject[] {
+    return loadDB().subjects || [];
+  },
+
+  getBooks(): DigitalBook[] {
+    return [];
+  },
+
+  getAnnouncements(): Announcement[] {
+    return loadDB().announcements || [];
+  },
+
+  // Attendance
+  getAttendanceEvents(): AttendanceEvent[] {
+    return loadDB().attendanceEvents || [];
+  },
+
+  getActiveAttendanceEvent(): AttendanceEvent | null {
+    const events = this.getAttendanceEvents();
+    return events.find((e) => (e as any).isActive || e.isOpen) || events[0] || null;
+  },
+
+  recordAttendanceScan(payload: { qrToken: string; eventId?: string }) {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    if (!user) throw new Error('Login diperlukan');
+
+    const event = this.getActiveAttendanceEvent();
+    const record: AttendanceRecord = {
+      id: 'rec_' + Date.now(),
+      eventId: payload.eventId || (event ? event.id : 'event_general'),
+      eventName: event ? event.name : 'Kegiatan Sekolah',
+      studentId: user.id,
+      studentName: user.name,
+      username: user.username,
+      kelas: user.kelas,
+      verifiedAt: new Date().toISOString(),
+      verifiedBy: 'Self',
+      status: 'TELAH MASUK',
+      verificationResult: 'BERHASIL',
+    };
+
+    if (!Array.isArray(db.attendanceRecords)) db.attendanceRecords = [];
+    db.attendanceRecords.push(record);
+    saveDB(db);
+
+    return { success: true, message: 'Absensi berhasil dicatat!', record };
+  },
+
+  getStudentAttendance(studentId: string): AttendanceRecord[] {
+    const db = loadDB();
+    return (db.attendanceRecords || []).filter((r) => r.studentId === studentId);
+  },
+
+  getAttendanceStats() {
+    return { hadir: 95, sakit: 2, izin: 3, alpha: 0 };
+  },
+
+  // Notifications
+  getExplicitlyDeletedQuizIds(): string[] {
+    return getExplicitlyDeletedQuizIds();
+  },
+
+  createNotification(data: {
+    title: string;
+    message: string;
+    type?: AppNotification['type'];
+    isImportant?: boolean;
+    linkType?: AppNotification['linkType'];
+    linkId?: string;
+    targetRole?: User['role'];
+    targetClass?: string;
+  }): AppNotification {
+    const db = loadDB();
+    if (!Array.isArray(db.notifications)) db.notifications = [];
+    const newNotif: AppNotification = {
+      id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      title: data.title,
+      message: data.message,
+      type: data.type || 'general',
+      isImportant: !!data.isImportant,
+      linkType: data.linkType || 'none',
+      linkId: data.linkId,
+      targetRole: data.targetRole,
+      targetClass: data.targetClass,
+      readBy: [],
+      deletedBy: [],
+      createdAt: new Date().toISOString(),
+    };
+    db.notifications.unshift(newNotif);
+    saveDB(db);
+    return newNotif;
+  },
+
+  getNotifications(): (AppNotification & { isRead: boolean })[] {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    return (db.notifications || []).map((n) => ({
+      ...n,
+      isRead: user ? (n.readBy || []).includes(user.id) : false,
+    }));
+  },
+
+  markNotificationRead(id: string) {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    const item = (db.notifications || []).find((n) => n.id === id);
+    if (item && user) {
+      if (!Array.isArray(item.readBy)) item.readBy = [];
+      if (!item.readBy.includes(user.id)) item.readBy.push(user.id);
+    }
+    saveDB(db);
+    return { success: true };
+  },
+
+  markAllNotificationsRead() {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    if (user) {
+      (db.notifications || []).forEach((n) => {
+        if (!Array.isArray(n.readBy)) n.readBy = [];
+        if (!n.readBy.includes(user.id)) n.readBy.push(user.id);
+      });
+    }
+    saveDB(db);
+    return { success: true };
+  },
+
+  deleteNotification(id: string) {
+    const db = loadDB();
+    db.notifications = (db.notifications || []).filter((n) => n.id !== id);
+    saveDB(db);
+    return { message: 'Notifikasi berhasil dihapus' };
+  },
+
+  // Admin
+  getAllUsers(): User[] {
+    const db = loadDB();
+    const explicitDeleted = getAdminExplicitlyDeletedIds();
+    return (db.users || []).filter((u) => {
+      const uId = (u.id || '').toLowerCase();
+      const uName = (u.username || '').toLowerCase().replace(/^@+/, '');
+      if (DEMO_STUDENT_USERNAMES.includes(uName) || uId.startsWith('user_siswa_siswa_')) return false;
+      return !explicitDeleted.includes(uId) && !explicitDeleted.includes(uName);
+    });
+  },
+
+  getStudents(): User[] {
+    const db = loadDB();
+    const explicitDeleted = getAdminExplicitlyDeletedIds();
+    return (db.users || [])
+      .filter((u) => u.role === 'siswa')
+      .filter((u) => {
+        if (isDemoStudent(u)) return false;
+        const uId = (u.id || '').toLowerCase();
+        const uName = (u.username || '').toLowerCase().replace(/^@+/, '');
+        return !explicitDeleted.includes(uId) && !explicitDeleted.includes(uName);
+      });
+  },
+
+  getStaff(): User[] {
+    return (loadDB().users || []).filter((u) => u.role === 'guru' || u.role === 'kepala_sekolah' || u.role === 'tata_usaha');
+  },
+
+  // -------------------------------------------------------------
+  // ARTIKEL GURU & METODE PEMBELAJARAN
+  // -------------------------------------------------------------
+  getArticles(category?: string, onlyPublished?: boolean) {
+    const db = loadDB();
+    if (!Array.isArray((db as any).articles)) { (db as any).articles = []; saveDB(db); }
+    let list = [...(db as any).articles];
+    if (category) list = list.filter((a: any) => a.category === category);
+    if (onlyPublished) list = list.filter((a: any) => a.isPublished);
+    return list.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  createArticle(data: any) {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    if (!Array.isArray((db as any).articles)) (db as any).articles = [];
+    const newArt = {
+      id: `art_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      authorId: user ? user.id : 'user_guru',
+      authorName: user ? user.name : 'Guru Tamansiswa',
+      authorAvatar: user?.avatarUrl,
+      authorSubject: user?.jabatan || 'Guru Mata Pelajaran',
+      title: data.title,
+      summary: data.summary,
+      content: data.content,
+      category: data.category || 'Artikel Guru',
+      coverUrl: data.coverUrl,
+      isPublished: data.isPublished !== false,
+      likesCount: 0,
+      readsCount: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    (db as any).articles.unshift(newArt);
+    saveDB(db);
+    return newArt;
+  },
+
+  updateArticle(id: string, data: any) {
+    const db = loadDB();
+    if (!Array.isArray((db as any).articles)) (db as any).articles = [];
+    const art = (db as any).articles.find((a: any) => a.id === id);
+    if (!art) throw new Error('Artikel tidak ditemukan');
+    Object.assign(art, data, { updatedAt: new Date().toISOString() });
+    saveDB(db);
+    return art;
+  },
+
+  deleteArticle(id: string) {
+    const db = loadDB();
+    if (!Array.isArray((db as any).articles)) return { message: 'Artikel berhasil dihapus' };
+    (db as any).articles = (db as any).articles.filter((a: any) => a.id !== id);
+    saveDB(db);
+    return { message: 'Artikel berhasil dihapus' };
+  },
+
+  // -------------------------------------------------------------
+  // ABSENSI KELAS GURU (QR & MANUAL)
+  // -------------------------------------------------------------
+  getClassAttendance(filters: { date?: string; kelas?: string; studentId?: string; status?: string }) {
+    const db = loadDB();
+    if (!Array.isArray((db as any).classAttendance)) (db as any).classAttendance = [];
+    let list = [...(db as any).classAttendance];
+    if (filters.date) list = list.filter((a: any) => a.date === filters.date);
+    if (filters.kelas) list = list.filter((a: any) => a.kelas.toLowerCase() === filters.kelas!.toLowerCase());
+    if (filters.studentId) list = list.filter((a: any) => a.studentId === filters.studentId);
+    if (filters.status && filters.status !== 'semua') list = list.filter((a: any) => a.status === filters.status);
+    return list;
+  },
+
+  recordClassAttendance(entries: any[]) {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    if (!Array.isArray((db as any).classAttendance)) (db as any).classAttendance = [];
+
+    entries.forEach((e) => {
+      const entryWithMeta = {
+        ...e,
+        teacherId: user ? user.id : 'user_guru',
+        teacherName: user ? user.name : 'Guru',
+        createdAt: new Date().toISOString(),
+      };
+      const existingIdx = (db as any).classAttendance.findIndex(
+        (item: any) => item.studentId === e.studentId && item.date === e.date && item.kelas === e.kelas
+      );
+      if (existingIdx > -1) {
+        (db as any).classAttendance[existingIdx] = { ...(db as any).classAttendance[existingIdx], ...entryWithMeta };
+      } else {
+        (db as any).classAttendance.push(entryWithMeta);
+      }
+    });
+
+    saveDB(db);
+    return { message: 'Absensi kelas berhasil disimpan', count: entries.length };
+  },
+
+  // -------------------------------------------------------------
+  // TATA USAHA (TU) - TAGIHAN, TRANSAKSI, DOKUMEN & CHAT
+  // -------------------------------------------------------------
+  getTuitionBills(studentId?: string, kelas?: string, status?: string) {
+    const db = loadDB();
+    if (!Array.isArray((db as any).tuitionBills)) { (db as any).tuitionBills = []; saveDB(db); }
+    let list = [...(db as any).tuitionBills];
+    if (studentId) list = list.filter((b: any) => b.studentId === studentId);
+    if (kelas) list = list.filter((b: any) => b.studentKelas.toLowerCase() === kelas.toLowerCase());
+    if (status && status !== 'semua') list = list.filter((b: any) => b.status === status);
+    return list.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  createTuitionBill(data: any) {
+    const db = loadDB();
+    if (!Array.isArray((db as any).tuitionBills)) (db as any).tuitionBills = [];
+    const bill = {
+      id: `bill_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      studentId: data.studentId || '',
+      studentName: data.studentName || '',
+      studentUsername: data.studentUsername || '',
+      studentKelas: data.studentKelas || 'X',
+      title: data.title || 'Tagihan Biaya Sekolah',
+      category: data.category || 'SPP',
+      amount: Number(data.amount) || 0,
+      dueDate: data.dueDate || new Date().toISOString().split('T')[0],
+      status: data.status || 'belum_lunas',
+      notes: data.notes,
+      createdAt: new Date().toISOString(),
+    };
+    (db as any).tuitionBills.unshift(bill);
+    saveDB(db);
+    return bill;
+  },
+
+  updateTuitionBill(id: string, data: any) {
+    const db = loadDB();
+    if (!Array.isArray((db as any).tuitionBills)) (db as any).tuitionBills = [];
+    const bill = (db as any).tuitionBills.find((b: any) => b.id === id);
+    if (!bill) throw new Error('Tagihan tidak ditemukan');
+    Object.assign(bill, data);
+    saveDB(db);
+    return bill;
+  },
+
+  deleteTuitionBill(id: string) {
+    const db = loadDB();
+    if (!Array.isArray((db as any).tuitionBills)) return { message: 'Tagihan berhasil dihapus' };
+    (db as any).tuitionBills = (db as any).tuitionBills.filter((b: any) => b.id !== id);
+    saveDB(db);
+    return { message: 'Tagihan berhasil dihapus' };
+  },
+
+  getTuitionTransactions(type?: string) {
+    const db = loadDB();
+    if (!Array.isArray((db as any).tuitionTransactions)) { (db as any).tuitionTransactions = []; saveDB(db); }
+    let list = [...(db as any).tuitionTransactions];
+    if (type && type !== 'semua') list = list.filter((t: any) => t.type === type);
+    return list.sort((a: any, b: any) => new Date(b.verifiedAt).getTime() - new Date(a.verifiedAt).getTime());
+  },
+
+  createTuitionTransaction(data: any) {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    if (!Array.isArray((db as any).tuitionTransactions)) (db as any).tuitionTransactions = [];
+    const trx = {
+      id: `trx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      billId: data.billId,
+      studentId: data.studentId,
+      studentName: data.studentName,
+      studentKelas: data.studentKelas,
+      amount: Number(data.amount) || 0,
+      type: data.type || 'pemasukan',
+      category: data.category || 'SPP',
+      paymentMethod: data.paymentMethod || 'Tunai / Kasir TU',
+      verifiedBy: user ? user.name : 'Staf Tata Usaha',
+      verifiedAt: new Date().toISOString(),
+      receiptNumber: `KW-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      description: data.description || 'Transaksi keuangan sekolah',
+    };
+    (db as any).tuitionTransactions.unshift(trx);
+    saveDB(db);
+    return trx;
+  },
+
+  getTuDocuments(category?: string) {
+    const db = loadDB();
+    if (!Array.isArray((db as any).tuDocuments)) { (db as any).tuDocuments = []; saveDB(db); }
+    let list = [...(db as any).tuDocuments];
+    if (category && category !== 'semua') list = list.filter((d: any) => d.category === category);
+    return list.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  createTuDocument(data: any) {
+    const db = loadDB();
+    if (!Array.isArray((db as any).tuDocuments)) (db as any).tuDocuments = [];
+    const doc = {
+      id: `doc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      title: data.title || '',
+      docNumber: data.docNumber || `${Math.floor(100 + Math.random() * 900)}/TS-BTM/TU/${new Date().getFullYear()}`,
+      category: data.category || 'Surat Keluar',
+      date: data.date || new Date().toISOString().split('T')[0],
+      recipientOrSender: data.recipientOrSender || 'Umum',
+      fileUrl: data.fileUrl,
+      status: data.status || 'Selesai',
+      notes: data.notes,
+      createdAt: new Date().toISOString(),
+    };
+    (db as any).tuDocuments.unshift(doc);
+    saveDB(db);
+    return doc;
+  },
+
+  deleteTuDocument(id: string) {
+    const db = loadDB();
+    if (!Array.isArray((db as any).tuDocuments)) return { message: 'Dokumen berhasil dihapus' };
+    (db as any).tuDocuments = (db as any).tuDocuments.filter((d: any) => d.id !== id);
+    saveDB(db);
+    return { message: 'Dokumen berhasil dihapus' };
+  },
+
+  getTuChatMessages(studentId?: string) {
+    const db = loadDB();
+    if (!Array.isArray((db as any).tuChatMessages)) { (db as any).tuChatMessages = []; saveDB(db); }
+    let list = [...(db as any).tuChatMessages];
+    if (studentId) list = list.filter((m: any) => m.studentId === studentId);
+    return list.sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  },
+
+  createTuChatMessage(data: any) {
+    const db = loadDB();
+    const user = this.getCurrentUser();
+    if (!Array.isArray((db as any).tuChatMessages)) (db as any).tuChatMessages = [];
+    const isStudent = user ? user.role === 'siswa' : data.senderRole === 'siswa';
+
+    const msg = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      studentId: isStudent ? (user ? user.id : 'user_siswa_bintang') : (data.studentId || ''),
+      studentName: isStudent ? (user ? user.name : 'Siswa') : (data.studentName || 'Siswa'),
+      studentKelas: isStudent ? (user?.kelas || user?.classGrade || 'VII-A SMP') : data.studentKelas,
+      senderRole: isStudent ? 'siswa' : 'tata_usaha',
+      senderName: user ? user.name : 'Pengguna',
+      message: (data.message || '').trim(),
+      proofUrl: data.proofUrl,
+      billId: data.billId,
+      createdAt: new Date().toISOString(),
+      isReadByTu: isStudent ? false : true,
+      isReadByStudent: isStudent ? true : false,
+    };
+    (db as any).tuChatMessages.push(msg);
+    saveDB(db);
+    return msg;
+  },
+
+  getTuMonthlyReports() {
+    const db = loadDB();
+    if (!Array.isArray((db as any).tuMonthlyReports)) {
+      (db as any).tuMonthlyReports = [];
+      saveDB(db);
+    }
+    return [...(db as any).tuMonthlyReports].sort(
+      (a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  },
+
+  createTuMonthlyReport(data: any) {
+    const db = loadDB();
+    if (!Array.isArray((db as any).tuMonthlyReports)) (db as any).tuMonthlyReports = [];
+    const newReport = {
+      id: `report_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      month: data.month,
+      monthName: data.monthName,
+      createdAt: new Date().toISOString(),
+      sentBy: data.sentBy || 'Tata Usaha Haliza',
+      sentByUsername: data.sentByUsername || 'haliza.tu',
+      recipients: [
+        'Titus Wahyu Diatmiko (Pemimpin Tamansiswa Batam)',
+        'ST Bambang Sapto Nugroho S.Pd (Kepala Sekolah)',
+      ],
+      summary: data.summary || {
+        totalRevenue: 0,
+        paidBillsCount: 0,
+        unpaidBillsCount: 0,
+        totalStudents: 0,
+        attendanceCount: 0,
+        documentsCount: 0,
+      },
+      notes: data.notes || '',
+      status: 'Terkirim & Terarsip',
+    };
+    (db as any).tuMonthlyReports.unshift(newReport);
+    saveDB(db);
+    return newReport;
+  },
+
+  // -------------------------------------------------------------
+  // MANAJEMEN GURU, CENTANG BIRU & SISWA/ALUMNI
+  // -------------------------------------------------------------
+  createStudent(studentData: Partial<User> & { password?: string }) {
+    const db = loadDB();
+    const rawUsername = studentData.username || `siswa_${Date.now()}`;
+    const username = rawUsername.trim().toLowerCase().replace(/^@+/, '');
+    const existing = db.users.find((u) => (u.username || '').toLowerCase().replace(/^@+/, '') === username);
+    if (existing) throw new Error('Username siswa sudah digunakan.');
+
+    const initialPassword = studentData.password?.trim() || ('Siswa' + Math.floor(100000 + Math.random() * 900000));
+    const kelas = studentData.kelas?.trim() || 'Kelas 7';
+    const gender = studentData.gender || 'Laki-laki';
+    const user: User = {
+      id: `stu_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      username,
+      name: (studentData.name || 'Siswa Baru').trim(),
+      role: 'siswa',
+      gender,
+      kelas,
+      initialPassword,
+      password: initialPassword,
+      passwordHash: '',
+      salt: '',
+      mustChangePassword: false,
+      isActive: true,
+      qrToken: `TAMVESTA:STUDENT:${username}`,
+      avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(studentData.name || 'Siswa')}&backgroundColor=0284c7`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    savePassword(user.username, initialPassword);
+    savePassword(username, initialPassword);
+
+    // Simpan ke backup permanen agar tidak pernah hilang saat refresh atau restart
+    const backupList = getAdminRegisteredStudentsBackup().filter(
+      (s) => s.id !== user.id && (s.username || '').toLowerCase().replace(/^@+/, '') !== username
+    );
+    backupList.unshift(user);
+    saveAdminRegisteredStudentsBackup(backupList);
+
+    // Hapus dari explicit deleted jika didaftarkan kembali
+    try {
+      const explicit = getAdminExplicitlyDeletedIds().filter((d) => d !== user.id.toLowerCase() && d !== username);
+      localStorage.setItem(ADMIN_DELETED_STUDENTS_KEY, JSON.stringify(explicit));
+    } catch (_) {}
+
+    // Remove from deletedUserIds so it is never suppressed or hidden
+    (db as any).deletedUserIds = ((db as any).deletedUserIds || []).filter(
+      (dId: string) => dId !== user.id && dId !== username && dId !== `@${username}`
+    );
+
+    // Ensure user is at the top of db.users without duplicates
+    db.users = [user, ...(db.users || []).filter((u) => u.id !== user.id && (u.username || '').toLowerCase() !== username)];
+    saveDB(db);
+    return user;
+  },
+
+  registerPortalStudent(data: {
+    name: string;
+    username: string;
+    password: string;
+    gender: 'Laki-laki' | 'Perempuan';
+    kelas: string;
+    nisn?: string;
+    phone?: string;
+    parentName?: string;
+    birthPlaceDate?: string;
+    address?: string;
+  }) {
+    const db = loadDB();
+    const rawUsername = data.username || `siswa_${Date.now()}`;
+    const username = rawUsername.trim().toLowerCase().replace(/^@+/, '');
+    const existing = db.users.find((u) => (u.username || '').toLowerCase().replace(/^@+/, '') === username);
+    if (existing) throw new Error(`Username "${username}" sudah digunakan.`);
+
+    const regNumber = `REG-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
+    const now = new Date().toISOString();
+    const user: User = {
+      id: `stu_reg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      username,
+      name: data.name.trim(),
+      role: 'siswa',
+      gender: data.gender || 'Laki-laki',
+      kelas: data.kelas || 'Kelas 7',
+      nisn: data.nisn?.trim() || undefined,
+      phone: data.phone?.trim() || undefined,
+      parentName: data.parentName?.trim() || undefined,
+      birthPlaceDate: data.birthPlaceDate?.trim() || undefined,
+      address: data.address?.trim() || undefined,
+      initialPassword: data.password.trim(),
+      password: data.password.trim(),
+      passwordHash: '',
+      salt: '',
+      mustChangePassword: false,
+      isActive: false, // Menunggu ACC
+      registrationStatus: 'pending',
+      registrationNumber: regNumber,
+      registeredAt: now,
+      qrToken: `TAMVESTA:STUDENT:${username}`,
+      avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(data.name)}&backgroundColor=0284c7`,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    savePassword(user.username, data.password.trim());
+    savePassword(username, data.password.trim());
+
+    db.users.push(user);
+    saveDB(db);
+    return { user, registrationNumber: regNumber };
+  },
+
+  approveRegistration(studentId: string, approverName: string = 'Admin') {
+    const db = loadDB();
+    const user = db.users.find((u) => u.id === studentId);
+    if (!user) throw new Error('Data pendaftar tidak ditemukan.');
+    user.isActive = true;
+    user.registrationStatus = 'approved';
+    user.approvedAt = new Date().toISOString();
+    user.approvedBy = approverName;
+    user.updatedAt = new Date().toISOString();
+    saveDB(db);
+    return user;
+  },
+
+  rejectRegistration(studentId: string) {
+    const db = loadDB();
+    const user = db.users.find((u) => u.id === studentId);
+    if (!user) throw new Error('Data pendaftar tidak ditemukan.');
+    user.isActive = false;
+    user.registrationStatus = 'rejected';
+    user.updatedAt = new Date().toISOString();
+    saveDB(db);
+    return user;
+  },
+
+  deleteStudent(id: string) {
+    const db = loadDB();
+    const idx = db.users.findIndex((u) => u.id === id);
+    if (idx !== -1) {
+      const removedUser = db.users[idx];
+      db.users.splice(idx, 1);
+      addAdminExplicitlyDeletedId(id, removedUser.username);
+
+      // Hapus dari backup permanen
+      const backupList = getAdminRegisteredStudentsBackup().filter(
+        (s) => s.id !== id && (s.username || '').toLowerCase().replace(/^@+/, '') !== (removedUser.username || '').toLowerCase().replace(/^@+/, '')
+      );
+      saveAdminRegisteredStudentsBackup(backupList);
+
+      (db as any).deletedUserIds = (db as any).deletedUserIds || [];
+      if (!(db as any).deletedUserIds.includes(id)) {
+        (db as any).deletedUserIds.push(id);
+      }
+      if (removedUser.username && !(db as any).deletedUserIds.includes(removedUser.username.toLowerCase())) {
+        (db as any).deletedUserIds.push(removedUser.username.toLowerCase());
+      }
+      saveDB(db);
+    }
+  },
+
+  recordDeletedUserIds(ids: string[]) {
+    if (!Array.isArray(ids) || ids.length === 0) return;
+    const db = loadDB();
+    (db as any).deletedUserIds = (db as any).deletedUserIds || [];
+    const explicit = getAdminExplicitlyDeletedIds();
+    const backup = getAdminRegisteredStudentsBackup();
+    const backupUsernames = backup.map((b) => (b.username || '').toLowerCase().replace(/^@+/, ''));
+    const backupIds = backup.map((b) => (b.id || '').toLowerCase());
+
+    let changed = false;
+    ids.forEach((did) => {
+      if (!did) return;
+      const clean = did.toLowerCase().trim();
+      const cleanU = clean.replace(/^@+/, '');
+
+      // JANGAN PERNAH hapus akun siswa aktif yang didaftarkan admin via sinkronisasi remote
+      if ((backupIds.includes(clean) || backupUsernames.includes(cleanU)) && !explicit.includes(clean) && !explicit.includes(cleanU)) {
+        return;
+      }
+
+      if (!(db as any).deletedUserIds.includes(clean)) {
+        (db as any).deletedUserIds.push(clean);
+        changed = true;
+      }
+    });
+
+    // Hapus akun yang cocok dari db.users secara permanen (hanya akun demo atau yang eksplisit dihapus)
+    const prevCount = (db.users || []).length;
+    db.users = (db.users || []).filter((u) => {
+      const uId = (u.id || '').toLowerCase();
+      const uName = (u.username || '').toLowerCase().replace(/^@+/, '');
+      if (DEMO_STUDENT_USERNAMES.includes(uName) || uId.startsWith('user_siswa_siswa_')) return false;
+      if (explicit.includes(uId) || explicit.includes(uName)) return false;
+      return true;
+    });
+
+    if ((db.users || []).length !== prevCount) {
+      changed = true;
+    }
+
+    if (changed) {
+      saveDB(db);
+    }
+  },
+
+  getDeletedUserIds(): string[] {
+    const db = loadDB();
+    return (db as any).deletedUserIds || [];
+  },
+
+  getDeletedPostIds(): string[] {
+    const db = loadDB();
+    return (db as any).deletedPostIds || [];
+  },
+
+  getPasswordResetRequests(): PasswordResetRequest[] {
+    const db = loadDB();
+    return (db.passwordResetRequests || []).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  },
+
+  saveTicketDirect(req: PasswordResetRequest) {
+    if (!req || !req.id) return;
+    const db = loadDB();
+    if (!Array.isArray(db.passwordResetRequests)) db.passwordResetRequests = [];
+    const idx = db.passwordResetRequests.findIndex((r) => r.id === req.id || r.ticketNumber === req.ticketNumber);
+    if (idx >= 0) {
+      const existing = db.passwordResetRequests[idx];
+      const finalStatus = (existing.status === 'approved' && req.status === 'pending') ? 'approved' : (req.status || existing.status);
+      const finalNote = (existing.status === 'approved' && existing.adminNote) ? existing.adminNote : (req.adminNote || existing.adminNote);
+      db.passwordResetRequests[idx] = { ...existing, ...req, status: finalStatus, adminNote: finalNote };
+    } else {
+      db.passwordResetRequests.unshift(req);
+    }
+    saveDB(db);
+  },
+
+  updateStudent(id: string, data: Partial<User>) {
+    const db = loadDB();
+    const u = db.users.find((user) => user.id === id);
+    if (u) {
+      if (data.name) u.name = data.name.trim();
+      if (data.gender) u.gender = data.gender as any;
+      if (data.kelas) u.kelas = data.kelas.trim();
+      if (data.username && data.username.toLowerCase() !== u.username.toLowerCase()) {
+        u.username = data.username.trim().toLowerCase();
+        u.qrToken = `TAMVESTA:STUDENT:${u.username}`;
+      }
+      if (data.phone !== undefined) u.phone = data.phone;
+      if (data.email !== undefined) u.email = data.email;
+      if (data.bio !== undefined) {
+        u.bio = data.bio;
+        savePermanentBio(u.id, u.username, data.bio);
+      }
+      if (data.avatarUrl !== undefined) {
+        u.avatarUrl = data.avatarUrl;
+        savePermanentAvatar(u.id, u.username, data.avatarUrl);
+      }
+      u.updatedAt = new Date().toISOString();
+      saveDB(db);
+    }
+    return u;
+  },
+
+  createPasswordResetRequest(data: { userId: string; newPassword: string; reason?: string }) {
+    const db = loadDB();
+    const user = db.users.find((u) => u.id === data.userId);
+    if (!user) throw new Error('Pengguna tidak ditemukan.');
+    if (!Array.isArray(db.passwordResetRequests)) db.passwordResetRequests = [];
+    const ticketNumber = `TKT-${Math.floor(100000 + Math.random() * 900000)}`;
+    const req: PasswordResetRequest = {
+      id: `pr_${Date.now()}`,
+      ticketNumber,
+      userId: user.id,
+      username: user.username,
+      name: user.name,
+      kelas: user.kelas || '-',
+      role: user.role,
+      reason: (data.reason || 'Pengajuan ganti sandi').trim(),
+      status: 'pending',
+      newPassword: data.newPassword,
+      createdAt: new Date().toISOString(),
+    };
+    db.passwordResetRequests.unshift(req);
+    saveDB(db);
+    return req;
+  },
+
+  processPasswordResetRequest(id: string, status: 'approved' | 'rejected' | 'acc', adminNote?: string) {
+    const db = loadDB();
+    if (!Array.isArray(db.passwordResetRequests)) db.passwordResetRequests = [];
+    const req = db.passwordResetRequests.find((r) => r.id === id || r.ticketNumber === id);
+    if (!req) throw new Error('Tiket tidak ditemukan.');
+    if (req.status !== 'pending') throw new Error('Tiket sudah diproses sebelumnya.');
+    const effectiveStatus: 'approved' | 'rejected' = status === 'acc' || status === 'approved' ? 'approved' : 'rejected';
+    req.status = effectiveStatus;
+    req.processedAt = new Date().toISOString();
+    req.processedBy = 'Administrator';
+    req.adminNote = adminNote || (effectiveStatus === 'approved' ? 'ACC' : 'Ditolak');
+
+    if (effectiveStatus === 'approved' && req.newPassword) {
+      const user = db.users.find((u) =>
+        u.id === req.userId ||
+        (u.username && req.username && u.username.toLowerCase().replace(/^@+/, '') === req.username.toLowerCase().replace(/^@+/, ''))
+      );
+      if (user) {
+        user.password = req.newPassword;
+        user.initialPassword = req.newPassword;
+        user.passwordChanged = true;
+        user.mustChangePassword = false;
+        const cleanU = (user.username || '').toLowerCase().replace(/^@+/, '');
+        savePassword(user.username, req.newPassword);
+        savePassword(cleanU, req.newPassword);
+        savePassword(`@${cleanU}`, req.newPassword);
+        savePassword(user.id, req.newPassword);
+      }
+    }
+    saveDB(db);
+    return req;
+  },
+
+  getStudentTickets(userId: string) {
+    const db = loadDB();
+    if (!Array.isArray(db.passwordResetRequests)) return [];
+    const targetUser = db.users.find((u) => u.id === userId);
+    const targetUn = (targetUser?.username || '').toLowerCase();
+    return db.passwordResetRequests.filter(
+      (r) => r.userId === userId || (targetUn && (r.username || '').toLowerCase() === targetUn)
+    ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  createTeacherAccount(data: any) {
+    const db = loadDB();
+    const existing = db.users.find((u) => u.username.toLowerCase() === data.username.toLowerCase());
+    if (existing) throw new Error('Username guru sudah digunakan.');
+
+    const initialPassword = data.password?.trim() || ('Tamvesta!G' + Math.floor(1000 + Math.random() * 9000));
+    const newTeacher: User = {
+      id: `user_teacher_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      username: data.username.trim().toLowerCase(),
+      name: data.name.trim(),
+      role: 'guru',
+      jabatan: data.jabatan || 'Guru Mata Pelajaran',
+      initialPassword,
+      passwordHash: '',
+      salt: '',
+      mustChangePassword: false,
+      isActive: true,
+      isVerified: true,
+      badgeType: 'green',
+      email: data.email,
+      phone: data.phone,
+      qrToken: `TAMVESTA:TEACHER:${data.username}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    savePassword(newTeacher.username, initialPassword);
+
+    // Remove from deletedUserIds
+    (db as any).deletedUserIds = ((db as any).deletedUserIds || []).filter(
+      (dId: string) => dId !== newTeacher.id && dId !== newTeacher.username && dId !== `@${newTeacher.username}`
+    );
+
+    db.users = [newTeacher, ...(db.users || []).filter((u) => u.id !== newTeacher.id && (u.username || '').toLowerCase() !== newTeacher.username)];
+    saveDB(db);
+    return newTeacher;
+  },
+
+  createStaffAccount(data: any): User {
+    const db = loadDB();
+    const cleanU = data.username.trim().toLowerCase();
+    const existing = db.users.find((u) => u.username.toLowerCase() === cleanU);
+    if (existing) throw new Error(`Username @${cleanU} sudah digunakan.`);
+
+    const initialPassword = data.password?.trim() || ('Tamvesta!' + Math.floor(1000 + Math.random() * 9000));
+    const newStaff: User = {
+      id: `user_staff_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      username: cleanU,
+      name: data.name.trim(),
+      role: data.role || 'tata_usaha',
+      jabatan: data.jabatan || (data.role === 'admin' ? 'Administrator' : data.role === 'kepala_sekolah' ? 'Kepala Sekolah' : 'Staf Tata Usaha'),
+      initialPassword,
+      password: initialPassword,
+      passwordHash: '',
+      salt: '',
+      mustChangePassword: false,
+      isActive: true,
+      email: data.email,
+      phone: data.phone,
+      qrToken: `TAMVESTA:STAFF:${cleanU}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    savePassword(newStaff.username, initialPassword);
+
+    (db as any).deletedUserIds = ((db as any).deletedUserIds || []).filter(
+      (dId: string) => dId !== newStaff.id && dId !== newStaff.username && dId !== `@${newStaff.username}`
+    );
+
+    db.users = [newStaff, ...(db.users || []).filter((u) => u.id !== newStaff.id && (u.username || '').toLowerCase() !== cleanU)];
+    saveDB(db);
+    return newStaff;
+  },
+
+  updateTeacherAccount(id: string, data: any) {
+    const db = loadDB();
+    const teacher = db.users.find((u) => u.id === id);
+    if (!teacher) throw new Error('Akun guru tidak ditemukan.');
+    if (data.name) teacher.name = data.name.trim();
+    if (data.jabatan) teacher.jabatan = data.jabatan.trim();
+    if (data.email !== undefined) teacher.email = data.email;
+    if (data.phone !== undefined) teacher.phone = data.phone;
+    if (data.isActive !== undefined) teacher.isActive = data.isActive;
+    if (data.isVerified !== undefined) teacher.isVerified = data.isVerified;
+    teacher.updatedAt = new Date().toISOString();
+    saveDB(db);
+    return teacher;
+  },
+
+  deleteTeacherAccount(id: string) {
+    const db = loadDB();
+    const idx = db.users.findIndex((u) => u.id === id);
+    if (idx === -1) return { message: 'Akun tidak ditemukan' };
+    db.users.splice(idx, 1);
+    saveDB(db);
+    return { message: 'Akun guru berhasil dihapus dari sistem' };
+  },
+
+  toggleVerifiedBadge(userId: string) {
+    const db = loadDB();
+    const user = db.users.find((u) => u.id === userId);
+    if (!user) throw new Error('Pengguna tidak ditemukan.');
+    user.isVerified = !user.isVerified;
+    if (Array.isArray(db.posts)) {
+      db.posts.forEach((p) => {
+        if (p.authorId === userId) p.authorIsVerified = user.isVerified;
+      });
+    }
+    if (Array.isArray(db.stories)) {
+      db.stories.forEach((s) => {
+        if (s.authorId === userId) s.authorIsVerified = user.isVerified;
+      });
+    }
+    saveDB(db);
+    return { isVerified: user.isVerified };
+  },
+
+  toggleAlumniStatus(studentId: string) {
+    const db = loadDB();
+    const student = db.users.find((u) => u.id === studentId);
+    if (!student) throw new Error('Siswa tidak ditemukan.');
+    student.isAlumni = !student.isAlumni;
+    saveDB(db);
+    return { isAlumni: student.isAlumni };
+  },
+
+  // --- MULTIPLAYER GAME ROOMS STORE ---
+  getGameRooms(): GameRoom[] {
+    try {
+      const raw = localStorage.getItem(GAME_ROOMS_KEY);
+      if (!raw) return [];
+      return JSON.parse(raw);
+    } catch (_) {
+      return [];
+    }
+  },
+
+  getGameRoom(code: string): GameRoom | null {
+    if (!code) return null;
+    const rooms = this.getGameRooms();
+    const clean = code.toUpperCase().trim();
+    const cleanAlnum = clean.replace(/[^A-Z0-9]/g, '');
+
+    // 1. Exact match
+    const exact = rooms.find((r) => r.code?.toUpperCase().trim() === clean);
+    if (exact) return exact;
+
+    // 2. Alphanumeric match (e.g. SPY482 == SPY-482)
+    const alnumMatch = rooms.find((r) => {
+      const rAlnum = (r.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      return rAlnum === cleanAlnum;
+    });
+    if (alnumMatch) return alnumMatch;
+
+    // 3. Match 3 digit angka (e.g. "482" untuk "SPY-482")
+    if (cleanAlnum.length >= 3 && /^\d+$/.test(cleanAlnum)) {
+      const numMatch = rooms.find((r) => {
+        const rAlnum = (r.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        return rAlnum.endsWith(cleanAlnum);
+      });
+      if (numMatch) return numMatch;
+    }
+
+    return null;
+  },
+
+  saveGameRoom(room: GameRoom): GameRoom {
+    try {
+      const rooms = this.getGameRooms();
+      const clean = (room.code || '').toUpperCase().trim();
+      const idx = rooms.findIndex((r) => r.id === room.id || r.code?.toUpperCase() === clean);
+      const updated = { ...room, updatedAt: Date.now() };
+
+      if (idx !== -1) {
+        rooms[idx] = updated;
+      } else {
+        rooms.unshift(updated);
+      }
+
+      // Hapus room lebih lama dari 12 jam
+      const cutoff = Date.now() - 12 * 60 * 60 * 1000;
+      const filtered = rooms.filter((r) => (r.createdAt || 0) > cutoff);
+      localStorage.setItem(GAME_ROOMS_KEY, JSON.stringify(filtered));
+
+      // Broadcast sync ke tab/jendela lain
+      try {
+        const channel = new BroadcastChannel('tamvesta_game_sync');
+        channel.postMessage({ type: 'ROOM_UPDATED', roomCode: room.code, timestamp: Date.now() });
+        channel.close();
+      } catch (_) {}
+
+      return updated;
+    } catch (_) {
+      return room;
+    }
+  },
+
+  deleteGameRoom(code: string) {
+    try {
+      const rooms = this.getGameRooms();
+      const clean = (code || '').toUpperCase().trim();
+      const filtered = rooms.filter((r) => r.code?.toUpperCase() !== clean);
+      localStorage.setItem(GAME_ROOMS_KEY, JSON.stringify(filtered));
+
+      try {
+        const channel = new BroadcastChannel('tamvesta_game_sync');
+        channel.postMessage({ type: 'ROOM_DELETED', roomCode: code, timestamp: Date.now() });
+        channel.close();
+      } catch (_) {}
+    } catch (_) {}
+  },
+
+  // Sinyal Refresh Siswa (Terhubung ke Admin)
+  addRefreshSignal(payload: { userId: string; userName: string; userUsername: string; userKelas?: string }) {
+    const db = loadDB();
+    if (!Array.isArray((db as any).refreshSignals)) (db as any).refreshSignals = [];
+    const now = new Date();
+    const formattedTime = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' WIB';
+    const newSignal = {
+      id: `sig_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      userId: payload.userId,
+      userName: payload.userName,
+      userUsername: payload.userUsername,
+      userKelas: payload.userKelas || '-',
+      timestamp: now.toISOString(),
+      formattedTime,
+      status: 'received',
+    };
+    (db as any).refreshSignals.unshift(newSignal);
+    if ((db as any).refreshSignals.length > 100) {
+      (db as any).refreshSignals = (db as any).refreshSignals.slice(0, 100);
+    }
+    saveDB(db);
+    return newSignal;
+  },
+
+  getRefreshSignals(): any[] {
+    const db = loadDB();
+    return Array.isArray((db as any).refreshSignals) ? (db as any).refreshSignals : [];
+  },
+
+  // Moderasi Foto Profil Siswa
+  resetStudentAvatar(studentId: string, moderator: { id: string; name: string; username: string }, reason: string) {
+    const db = loadDB();
+    const user = (db.users || []).find((u) => u.id === studentId || u.username.toLowerCase() === studentId.toLowerCase());
+    if (!user) return { success: false };
+    const oldAvatar = user.avatarUrl;
+    user.avatarUrl = '/assets/tamvesta_mascot.jpg';
+    user.updatedAt = new Date().toISOString();
+
+    if (!Array.isArray((db as any).moderationLogs)) (db as any).moderationLogs = [];
+    const log = {
+      id: `mod_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      action: 'reset_avatar',
+      targetUserId: user.id,
+      targetUserName: user.name,
+      targetUsername: user.username,
+      targetUserKelas: user.kelas,
+      reason,
+      moderatorId: moderator.id,
+      moderatorName: moderator.name,
+      moderatorUsername: moderator.username,
+      timestamp: new Date().toISOString(),
+      details: `Foto profil direset dari ${oldAvatar || 'kustom'} ke avatar default TAMVESTA.`,
+    };
+    (db as any).moderationLogs.unshift(log);
+    saveDB(db);
+    return { success: true, user };
+  },
+
+  getModerationLogs(): any[] {
+    const db = loadDB();
+    return Array.isArray((db as any).moderationLogs) ? (db as any).moderationLogs : [];
+  },
+
+  // -------------------------------------------------------------
+  // DIRECT MESSAGES (DM)
+  // -------------------------------------------------------------
+  getDirectMessages(userId1: string, userId2: string): any[] {
+    const db = loadDB();
+    if (!Array.isArray((db as any).directMessages)) (db as any).directMessages = [];
+    return (db as any).directMessages
+      .filter((m: any) => {
+        const match =
+          (m.senderId === userId1 && m.recipientId === userId2) ||
+          (m.senderId === userId2 && m.recipientId === userId1);
+        return match && !m.isDeleted;
+      })
+      .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  },
+
+  getDMConversations(userId: string): any[] {
+    const db = loadDB();
+    if (!Array.isArray((db as any).directMessages)) (db as any).directMessages = [];
+    const conversationMap = new Map<string, { lastMessage: any; unreadCount: number }>();
+
+    for (const m of (db as any).directMessages) {
+      if (m.isDeleted) continue;
+      let partnerId: string | null = null;
+      if (m.senderId === userId) {
+        partnerId = m.recipientId;
+      } else if (m.recipientId === userId) {
+        partnerId = m.senderId;
+      }
+      if (!partnerId) continue;
+
+      const existing = conversationMap.get(partnerId);
+      const isUnread = m.recipientId === userId && !m.isRead;
+      if (!existing) {
+        conversationMap.set(partnerId, {
+          lastMessage: m,
+          unreadCount: isUnread ? 1 : 0,
+        });
+      } else {
+        if (new Date(m.createdAt).getTime() > new Date(existing.lastMessage.createdAt).getTime()) {
+          existing.lastMessage = m;
+        }
+        if (isUnread) {
+          existing.unreadCount += 1;
+        }
+      }
+    }
+
+    const conversations: any[] = [];
+    conversationMap.forEach((conv, partnerId) => {
+      const partner = (db.users || []).find((u) => u.id === partnerId || u.username === partnerId);
+      conversations.push({
+        partnerId,
+        partnerName: partner ? partner.name : (conv.lastMessage.senderId === partnerId ? conv.lastMessage.senderName : conv.lastMessage.recipientName),
+        partnerUsername: partner ? partner.username : (conv.lastMessage.senderId === partnerId ? conv.lastMessage.senderUsername : conv.lastMessage.recipientUsername),
+        partnerAvatar: partner?.avatarUrl,
+        partnerIsVerified: partner?.isVerified || partner?.role === 'guru',
+        lastMessage: conv.lastMessage,
+        unreadCount: conv.unreadCount,
+        updatedAt: conv.lastMessage.createdAt,
+      });
+    });
+
+    return conversations.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  },
+
+  sendDirectMessage(payload: any): any {
+    const db = loadDB();
+    if (!Array.isArray((db as any).directMessages)) (db as any).directMessages = [];
+    const now = new Date().toISOString();
+    const newMsg: any = {
+      id: `dm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      senderId: payload.senderId,
+      senderName: payload.senderName,
+      senderUsername: payload.senderUsername,
+      senderAvatar: payload.senderAvatar,
+      recipientId: payload.recipientId,
+      recipientName: payload.recipientName,
+      recipientUsername: payload.recipientUsername,
+      recipientAvatar: payload.recipientAvatar,
+      text: payload.text || '',
+      mediaType: payload.mediaType || 'text',
+      mediaUrl: payload.mediaUrl,
+      audioDuration: payload.audioDuration,
+      replyToMessage: payload.replyToMessage,
+      replyToStory: payload.replyToStory,
+      reactions: {},
+      isRead: false,
+      forwardedFrom: payload.forwardedFrom,
+      createdAt: now,
+    };
+
+    (db as any).directMessages.push(newMsg);
+    saveDB(db);
+    return newMsg;
+  },
+
+  reactToDirectMessage(messageId: string, emoji: string, userId: string): any {
+    const db = loadDB();
+    if (!Array.isArray((db as any).directMessages)) return null;
+    const msg = (db as any).directMessages.find((m: any) => m.id === messageId);
+    if (!msg) return null;
+
+    if (!msg.reactions) msg.reactions = {};
+    const usersForEmoji = msg.reactions[emoji] || [];
+    const alreadyHas = usersForEmoji.includes(userId);
+
+    for (const key of Object.keys(msg.reactions)) {
+      msg.reactions[key] = msg.reactions[key].filter((id: string) => id !== userId);
+      if (msg.reactions[key].length === 0) {
+        delete msg.reactions[key];
+      }
+    }
+
+    if (!alreadyHas) {
+      if (!msg.reactions[emoji]) msg.reactions[emoji] = [];
+      msg.reactions[emoji].push(userId);
+    }
+
+    saveDB(db);
+    return msg;
+  },
+
+  deleteDirectMessage(messageId: string, userId: string): boolean {
+    const db = loadDB();
+    if (!Array.isArray((db as any).directMessages)) return false;
+    const msg = (db as any).directMessages.find((m: any) => m.id === messageId);
+    if (!msg) return false;
+    if (msg.senderId === userId || msg.recipientId === userId) {
+      msg.isDeleted = true;
+      saveDB(db);
+      return true;
+    }
+    return false;
+  },
+
+  markMessagesAsRead(senderId: string, recipientId: string): void {
+    const db = loadDB();
+    if (!Array.isArray((db as any).directMessages)) return;
+    let modified = false;
+    for (const m of (db as any).directMessages) {
+      if (m.senderId === senderId && m.recipientId === recipientId && !m.isRead) {
+        m.isRead = true;
+        modified = true;
+      }
+    }
+    if (modified) saveDB(db);
+  },
+
+  // -------------------------------------------------------------
+  // CATATAN (NOTES) - KEDALUWARSA 24 JAM
+  // -------------------------------------------------------------
+  getActiveNotes(): any[] {
+    const db = loadDB();
+    if (!Array.isArray((db as any).studentNotes)) (db as any).studentNotes = [];
+    const now = Date.now();
+    const active = (db as any).studentNotes.filter((n: any) => {
+      const exp = new Date(n.expiresAt).getTime();
+      return exp > now;
+    });
+
+    if (active.length !== (db as any).studentNotes.length) {
+      (db as any).studentNotes = active;
+      saveDB(db);
+    }
+
+    return (db as any).studentNotes.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  createOrUpdateNote(payload: any): any {
+    const db = loadDB();
+    if (!Array.isArray((db as any).studentNotes)) (db as any).studentNotes = [];
+    (db as any).studentNotes = (db as any).studentNotes.filter((n: any) => n.userId !== payload.userId);
+
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+    const newNote: any = {
+      id: `note_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      userId: payload.userId,
+      userName: payload.userName,
+      userUsername: payload.userUsername,
+      userAvatar: payload.userAvatar,
+      userKelas: payload.userKelas,
+      text: payload.text.trim(),
+      createdAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    };
+
+    (db as any).studentNotes.unshift(newNote);
+    saveDB(db);
+    return newNote;
+  },
+
+  deleteStudentNote(userId: string): boolean {
+    const db = loadDB();
+    if (!Array.isArray((db as any).studentNotes)) return false;
+    const initialLen = (db as any).studentNotes.length;
+    (db as any).studentNotes = (db as any).studentNotes.filter((n: any) => n.userId !== userId);
+    if ((db as any).studentNotes.length !== initialLen) {
+      saveDB(db);
+      return true;
+    }
+    return false;
+  },
+
+  // -------------------------------------------------------------
+  // LOST AND FOUND (BARANG HILANG & DITEMUKAN)
+  // -------------------------------------------------------------
+  getLostFoundItems(filter?: any): any[] {
+    const db = loadDB();
+    if (!Array.isArray((db as any).lostFoundItems)) (db as any).lostFoundItems = [];
+    let list = [...(db as any).lostFoundItems];
+    if (filter?.type) {
+      list = list.filter((i: any) => i.type === filter.type);
+    }
+    if (filter?.status) {
+      list = list.filter((i: any) => i.status === filter.status);
+    }
+    return list.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  createLostFoundItem(payload: any): any {
+    const db = loadDB();
+    if (!Array.isArray((db as any).lostFoundItems)) (db as any).lostFoundItems = [];
+    const now = new Date().toISOString();
+    const newItem: any = {
+      id: `lf_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      type: payload.type || 'lost',
+      reporterId: payload.reporterId || '',
+      reporterName: payload.reporterName || 'Siswa',
+      reporterUsername: payload.reporterUsername || '',
+      reporterKelas: payload.reporterKelas,
+      itemName: (payload.itemName || '').trim(),
+      category: payload.category || 'lainnya',
+      photoUrl: payload.photoUrl,
+      description: (payload.description || '').trim(),
+      location: (payload.location || '').trim(),
+      dateTime: payload.dateTime || now,
+      storageStatus: payload.storageStatus || 'masih_di_penemu',
+      additionalNotes: payload.additionalNotes,
+      status: 'menunggu_pemeriksaan',
+      claims: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    (db as any).lostFoundItems.unshift(newItem);
+    saveDB(db);
+    return newItem;
+  },
+
+  updateLostFoundItem(id: string, updates: any): any {
+    const db = loadDB();
+    if (!Array.isArray((db as any).lostFoundItems)) return null;
+    const item = (db as any).lostFoundItems.find((i: any) => i.id === id);
+    if (!item) return null;
+
+    Object.assign(item, updates, { updatedAt: new Date().toISOString() });
+    saveDB(db);
+    return item;
+  },
+
+  claimLostFoundItem(itemId: string, claimPayload: any): any {
+    const db = loadDB();
+    if (!Array.isArray((db as any).lostFoundItems)) return null;
+    const item = (db as any).lostFoundItems.find((i: any) => i.id === itemId);
+    if (!item) return null;
+
+    if (!Array.isArray(item.claims)) item.claims = [];
+    const now = new Date().toISOString();
+    const newClaim: any = {
+      id: `claim_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      claimantId: claimPayload.claimantId || '',
+      claimantName: claimPayload.claimantName || '',
+      claimantUsername: claimPayload.claimantUsername || '',
+      claimantKelas: claimPayload.claimantKelas,
+      reason: (claimPayload.reason || '').trim(),
+      identifyingFeatures: (claimPayload.identifyingFeatures || '').trim(),
+      additionalInfo: claimPayload.additionalInfo,
+      status: 'menunggu_verifikasi',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    item.claims.unshift(newClaim);
+    item.updatedAt = now;
+    saveDB(db);
+    return item;
+  },
+
+  updateLostFoundClaim(itemId: string, claimId: string, updates: any): any {
+    const db = loadDB();
+    if (!Array.isArray((db as any).lostFoundItems)) return null;
+    const item = (db as any).lostFoundItems.find((i: any) => i.id === itemId);
+    if (!item || !Array.isArray(item.claims)) return null;
+
+    const claim = item.claims.find((c: any) => c.id === claimId);
+    if (!claim) return null;
+
+    Object.assign(claim, updates, { updatedAt: new Date().toISOString() });
+    item.updatedAt = new Date().toISOString();
+
+    if (updates.status === 'barang_telah_dikembalikan') {
+      item.status = 'barang_telah_dikembalikan';
+      item.handoverOfficer = updates.verifiedBy;
+      item.handoverTime = new Date().toISOString();
+    }
+
+    saveDB(db);
+    return item;
+  },
+
+  // -------------------------------------------------------------
+  // PERIZINAN TEMPAT DAN KEGIATAN
+  // -------------------------------------------------------------
+  getActivityPermissions(applicantId?: string): any[] {
+    const db = loadDB();
+    if (!Array.isArray((db as any).activityPermissions)) (db as any).activityPermissions = [];
+    let list = [...(db as any).activityPermissions];
+    if (applicantId) {
+      list = list.filter((p: any) => p.applicantId === applicantId);
+    }
+    return list.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  createActivityPermission(payload: any): any {
+    const db = loadDB();
+    if (!Array.isArray((db as any).activityPermissions)) (db as any).activityPermissions = [];
+    const now = new Date().toISOString();
+    const newPerm: any = {
+      id: `perm_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      applicantId: payload.applicantId || '',
+      applicantName: payload.applicantName || '',
+      applicantUsername: payload.applicantUsername || '',
+      applicantKelas: payload.applicantKelas,
+      organizationOrClass: (payload.organizationOrClass || '').trim(),
+      activityName: (payload.activityName || '').trim(),
+      purpose: (payload.purpose || '').trim(),
+      requestedLocation: (payload.requestedLocation || '').trim(),
+      activityDate: payload.activityDate || '',
+      startTime: payload.startTime || '',
+      endTime: payload.endTime || '',
+      participantCount: payload.participantCount || 1,
+      supervisorTeacher: (payload.supervisorTeacher || '').trim(),
+      additionalNotes: payload.additionalNotes,
+      status: 'menunggu_satpam',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    (db as any).activityPermissions.unshift(newPerm);
+    saveDB(db);
+    return newPerm;
+  },
+
+  reviewActivityPermissionSatpam(id: string, review: any): any {
+    const db = loadDB();
+    if (!Array.isArray((db as any).activityPermissions)) return null;
+    const perm = (db as any).activityPermissions.find((p: any) => p.id === id);
+    if (!perm) return null;
+
+    perm.satpamReview = {
+      reviewedBy: review.reviewedBy,
+      safetyChecked: review.safetyChecked,
+      facilityAvailable: review.facilityAvailable,
+      notes: review.notes,
+      reviewedAt: new Date().toISOString(),
+    };
+
+    perm.status = 'menunggu_kepsek';
+    perm.updatedAt = new Date().toISOString();
+    saveDB(db);
+    return perm;
+  },
+
+  decideActivityPermissionPrincipal(id: string, decision: any): any {
+    const db = loadDB();
+    if (!Array.isArray((db as any).activityPermissions)) return null;
+    const perm = (db as any).activityPermissions.find((p: any) => p.id === id);
+    if (!perm) return null;
+
+    const now = new Date().toISOString();
+    perm.principalDecision = {
+      decidedBy: decision.decidedBy,
+      approved: decision.approved,
+      revisionNote: decision.revisionNote,
+      rejectionReason: decision.rejectionReason,
+      decidedAt: now,
+    };
+
+    if (decision.isRevision) {
+      perm.status = 'perlu_revisi';
+    } else if (decision.approved) {
+      perm.status = 'disetujui';
+    } else {
+      perm.status = 'ditolak';
+    }
+
+    perm.updatedAt = now;
+    saveDB(db);
+    return perm;
+  },
+
+  updateActivityPermission(id: string, updates: any): any {
+    const db = loadDB();
+    if (!Array.isArray((db as any).activityPermissions)) return null;
+    const perm = (db as any).activityPermissions.find((p: any) => p.id === id);
+    if (!perm) return null;
+
+    Object.assign(perm, updates, { updatedAt: new Date().toISOString() });
+    saveDB(db);
+    return perm;
+  },
+
+  // -------------------------------------------------------------
+  // LAPORAN APLIKASI TAMVESTA
+  // -------------------------------------------------------------
+  getAppReports(reporterId?: string, targetHandler?: string): any[] {
+    const db = loadDB();
+    if (!Array.isArray((db as any).appReports)) (db as any).appReports = [];
+    let list = [...(db as any).appReports];
+    if (reporterId) {
+      list = list.filter((r: any) => r.reporterId === reporterId);
+    }
+    if (targetHandler) {
+      list = list.filter((r: any) => r.targetHandler === targetHandler || r.targetHandler === 'both');
+    }
+    return list.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  createAppReport(payload: any): any {
+    const db = loadDB();
+    if (!Array.isArray((db as any).appReports)) (db as any).appReports = [];
+    const now = new Date().toISOString();
+    const newReport: any = {
+      id: `rep_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      reporterId: payload.reporterId || '',
+      reporterName: payload.reporterName || '',
+      reporterUsername: payload.reporterUsername || '',
+      reporterKelas: payload.reporterKelas,
+      reportType: payload.reportType || 'kendala_penggunaan',
+      title: (payload.title || '').trim(),
+      description: (payload.description || '').trim(),
+      screenshotUrl: payload.screenshotUrl,
+      incidentTime: payload.incidentTime || now,
+      additionalNotes: payload.additionalNotes,
+      status: 'laporan_diterima',
+      targetHandler: payload.targetHandler || 'support',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    (db as any).appReports.unshift(newReport);
+    saveDB(db);
+    return newReport;
+  },
+
+  respondAppReportAdmin(id: string, response: any): any {
+    const db = loadDB();
+    if (!Array.isArray((db as any).appReports)) return null;
+    const rep = (db as any).appReports.find((r: any) => r.id === id);
+    if (!rep) return null;
+
+    const now = new Date().toISOString();
+    rep.adminResponse = {
+      respondedBy: response.respondedBy,
+      message: response.message,
+      respondedAt: now,
+    };
+    if (response.newStatus) {
+      rep.status = response.newStatus;
+    }
+    rep.updatedAt = now;
+    saveDB(db);
+    return rep;
+  },
+
+  respondAppReportSupport(id: string, response: any): any {
+    const db = loadDB();
+    if (!Array.isArray((db as any).appReports)) return null;
+    const rep = (db as any).appReports.find((r: any) => r.id === id);
+    if (!rep) return null;
+
+    const now = new Date().toISOString();
+    rep.supportResponse = {
+      respondedBy: response.respondedBy,
+      technicalNotes: response.technicalNotes,
+      resolvedAt: response.newStatus === 'selesai' ? now : undefined,
+      respondedAt: now,
+    };
+    if (response.newStatus) {
+      rep.status = response.newStatus;
+    }
+    rep.updatedAt = now;
+    saveDB(db);
+    return rep;
+  },
+
+  updateAppReport(id: string, updates: any): any {
+    const db = loadDB();
+    if (!Array.isArray((db as any).appReports)) return null;
+    const rep = (db as any).appReports.find((r: any) => r.id === id);
+    if (!rep) return null;
+
+    Object.assign(rep, updates, { updatedAt: new Date().toISOString() });
+    saveDB(db);
+    return rep;
+  },
+};
