@@ -77,7 +77,8 @@
       "qrToken": "TAMVESTA:STUDENT:user_staff_bambang_operator:fc992c0f9fb9de13",
       "createdAt": "2026-10-24T08:22:46.865Z",
       "updatedAt": "2026-10-24T08:22:46.865Z",
-      "password": "Tamvesta!B2604"
+      "password": "Tamvesta!B2604",
+      "isVerified": true
     },
     {
       "id": "user_staff_haliza_tu",
@@ -521,6 +522,28 @@
       "readBy": [],
       "deletedBy": [],
       "createdAt": "2026-11-07T09:41:59.451Z"
+    },
+    {
+      "id": "notif_1794044519265_sww7u",
+      "title": "📋 Pendaftaran Siswa Baru (Menunggu ACC)",
+      "message": "Calon siswa: Siswa Percobaan PPDB (REG-2026-16538) mendaftar untuk kelas Kelas 7. Menunggu verifikasi dan persetujuan (ACC).",
+      "type": "system",
+      "isImportant": false,
+      "linkType": "none",
+      "readBy": [],
+      "deletedBy": [],
+      "createdAt": "2026-11-07T09:41:59.265Z"
+    },
+    {
+      "id": "notif_welcome",
+      "title": "Selamat Datang di TAMVESTA Mobile!",
+      "message": "Aplikasi resmi siswa Tamansiswa Batam kini aktif dengan fitur Feed, Story, QR, Arsip, dan Quiz.",
+      "type": "general",
+      "isImportant": true,
+      "linkType": "none",
+      "readBy": [],
+      "deletedBy": [],
+      "createdAt": "2026-10-31T09:13:10.084Z"
     },
     {
       "id": "notif_announcement_1",
