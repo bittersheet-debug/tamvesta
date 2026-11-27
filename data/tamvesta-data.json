@@ -522,17 +522,6 @@
       "createdAt": "2026-11-07T09:41:59.451Z"
     },
     {
-      "id": "notif_welcome",
-      "title": "Selamat Datang di TAMVESTA Mobile!",
-      "message": "Aplikasi resmi siswa Tamansiswa Batam kini aktif dengan fitur Feed, Story, QR, Arsip, dan Quiz.",
-      "type": "general",
-      "isImportant": true,
-      "linkType": "none",
-      "readBy": [],
-      "deletedBy": [],
-      "createdAt": "2026-10-31T09:13:10.084Z"
-    },
-    {
       "id": "notif_announcement_1",
       "title": "Pengumuman: Ujian Tengah Semester & Event Budaya",
       "message": "Jadwal persiapan UTS dan perayaan Hari Pendidikan Nasional Tamansiswa Batam telah diterbitkan.",
