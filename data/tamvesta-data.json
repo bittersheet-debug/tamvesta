@@ -599,6 +599,16 @@
   "gameRooms": [],
   "refreshSignals": [
     {
+      "id": "sig_1795778293200_myrl",
+      "userId": "user_admin_tamansiswa",
+      "userName": "Administrator Tamansiswa Batam",
+      "userUsername": "TAMANSISWA",
+      "userKelas": "-",
+      "timestamp": "2026-11-27T11:18:13.200Z",
+      "formattedTime": "11.18.13 WIB",
+      "status": "received"
+    },
+    {
       "id": "sig_1795778289463_5prp",
       "userId": "stu_1795778289430_hmpmd",
       "userName": "Alvaro Pratama Herlen",
