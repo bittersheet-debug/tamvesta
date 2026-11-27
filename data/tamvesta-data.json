@@ -377,7 +377,30 @@
       "phone": "0895410591097",
       "email": "paro.pratama.herlenn@gmail.com",
       "passwordChanged": true,
-      "isAlumni": false
+      "isVerified": true
+    },
+    {
+      "id": "stu_1793384582080_7ddbl",
+      "username": "aldongker",
+      "name": "Ibrahim Al Ashry",
+      "role": "siswa",
+      "gender": "Laki-laki",
+      "kelas": "Kelas 9",
+      "initialPassword": "123456",
+      "password": "123456",
+      "passwordHash": "f0320e943d32c0d49dcf3c55e6edd0e447d112500bd4c07f29197cff525b3f3af1868539b22bf795490c4ac903669192196ab89d859fbd517eb304b02f31b1b7",
+      "salt": "f3813b9374025ad1f3cfa7d2e9eafc8c",
+      "mustChangePassword": false,
+      "isActive": true,
+      "qrToken": "TAMVESTA:STUDENT:stu_1793384582080_7ddbl:afdc378c15556f3f",
+      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Ibrahim%20Al%20Ashry&backgroundColor=0284c7",
+      "createdAt": "2026-10-30T18:23:02.080Z",
+      "updatedAt": "2026-10-31T07:57:50.805Z",
+      "isOfficial": true,
+      "isCustom": true,
+      "source": "admin",
+      "isDemo": false,
+      "isVerified": true
     },
     {
       "id": "stu_1793384638396_vxd3b",
@@ -399,8 +422,7 @@
       "isOfficial": true,
       "isCustom": true,
       "source": "admin",
-      "isDemo": false,
-      "isVerified": true
+      "isDemo": false
     },
     {
       "id": "stu_1795778289430_hmpmd",
@@ -411,19 +433,19 @@
       "kelas": "Kelas 8",
       "initialPassword": "123456",
       "password": "123456",
-      "passwordHash": "e7775a5a9189c51d9e39b1b8b00b58cd5438e6a40b370dd14b9099f35fc58a9db1f6bb5b00ac2e35d6eebbe2991aaaa5307948d39629b26fe864de54133de50c",
-      "salt": "3fca8387cbf784488dcba5f0e1c4ce6a",
+      "passwordHash": "02b61ab00dfebc4d421f9e5ee2b4af3ee5563d059322342d08d8d924ced76f869911d3144b72e0456b548f0888bdd4059ad6d967b739e49f61ea6bfc894c1e52",
+      "salt": "63d8c18227ecc75d54052080eeb5b95f",
       "mustChangePassword": false,
       "isActive": true,
       "qrToken": "TAMVESTA:STUDENT:stu_1795778289430_hmpmd:60651e0a235a300f",
       "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Alvaro%20Pratama%20Herlen&backgroundColor=0284c7",
       "createdAt": "2026-11-27T11:18:09.430Z",
-      "updatedAt": "2026-11-27T11:18:09.430Z",
+      "updatedAt": "2026-11-27T11:18:42.239Z",
       "isOfficial": true,
       "isCustom": true,
       "source": "admin",
       "isDemo": false,
-      "isVerified": true
+      "passwordChanged": true
     }
   ],
   "subjects": [],
@@ -636,11 +658,8 @@
     "guru.matematika",
     "guru.bahasa",
     "kepala.sekolah",
-    "panitia.osis",
-    "stu_1793384582080_7ddbl",
-    "aldongker"
+    "panitia.osis"
   ],
-  "schedules": [],
   "schoolClasses": [
     {
       "id": "class_7a",
@@ -690,5 +709,6 @@
       "createdAt": "2026-11-27T11:15:36.102Z",
       "updatedAt": "2026-11-27T11:15:36.102Z"
     }
-  ]
+  ],
+  "schedules": []
 }
