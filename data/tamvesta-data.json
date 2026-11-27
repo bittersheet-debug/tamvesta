@@ -511,15 +511,15 @@
   "notes": [],
   "notifications": [
     {
-      "id": "notif_1794044519265_sww7u",
-      "title": "📋 Pendaftaran Siswa Baru (Menunggu ACC)",
-      "message": "Calon siswa: Siswa Percobaan PPDB (REG-2026-16538) mendaftar untuk kelas Kelas 7. Menunggu verifikasi dan persetujuan (ACC).",
+      "id": "notif_1794044519451_8fhlo",
+      "title": "✅ Pendaftaran Siswa Di-ACC",
+      "message": "Pendaftaran akun siswa Siswa Percobaan PPDB (@test.siswa.1794044519232) telah disetujui (ACC) oleh Admin Penguji. Akun kini aktif.",
       "type": "system",
       "isImportant": false,
       "linkType": "none",
       "readBy": [],
       "deletedBy": [],
-      "createdAt": "2026-11-07T09:41:59.265Z"
+      "createdAt": "2026-11-07T09:41:59.451Z"
     },
     {
       "id": "notif_welcome",
@@ -674,5 +674,6 @@
       "createdAt": "2026-11-27T09:56:33.320Z",
       "updatedAt": "2026-11-27T09:56:33.320Z"
     }
-  ]
+  ],
+  "schedules": []
 }
