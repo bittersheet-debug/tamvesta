@@ -376,8 +376,7 @@
       "salt": "7e1e10ed5203669f3d107fecf5f68dfa",
       "phone": "0895410591097",
       "email": "paro.pratama.herlenn@gmail.com",
-      "passwordChanged": true,
-      "isVerified": true
+      "passwordChanged": true
     },
     {
       "id": "stu_1793384582080_7ddbl",
@@ -440,7 +439,7 @@
       "qrToken": "TAMVESTA:STUDENT:stu_1795778289430_hmpmd:60651e0a235a300f",
       "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Alvaro%20Pratama%20Herlen&backgroundColor=0284c7",
       "createdAt": "2026-11-27T11:18:09.430Z",
-      "updatedAt": "2026-11-27T11:18:42.239Z",
+      "updatedAt": "2026-11-27T11:18:47.036Z",
       "isOfficial": true,
       "isCustom": true,
       "source": "admin",
@@ -601,6 +600,26 @@
   "gameRooms": [],
   "refreshSignals": [
     {
+      "id": "sig_1795778293200_myrl",
+      "userId": "user_admin_tamansiswa",
+      "userName": "Administrator Tamansiswa Batam",
+      "userUsername": "TAMANSISWA",
+      "userKelas": "-",
+      "timestamp": "2026-11-27T11:18:13.200Z",
+      "formattedTime": "11.18.13 WIB",
+      "status": "received"
+    },
+    {
+      "id": "sig_1795778289463_5prp",
+      "userId": "stu_1795778289430_hmpmd",
+      "userName": "Alvaro Pratama Herlen",
+      "userUsername": "kimel",
+      "userKelas": "Kelas 8",
+      "timestamp": "2026-11-27T11:18:09.438Z",
+      "formattedTime": "11.18.09 WIB",
+      "status": "received"
+    },
+    {
       "id": "sig_1794044519462_c63l",
       "userKelas": "-",
       "timestamp": "2026-11-07T09:41:59.462Z",
@@ -660,6 +679,7 @@
     "kepala.sekolah",
     "panitia.osis"
   ],
+  "schedules": [],
   "schoolClasses": [
     {
       "id": "class_7a",
@@ -709,6 +729,5 @@
       "createdAt": "2026-11-27T11:15:36.102Z",
       "updatedAt": "2026-11-27T11:15:36.102Z"
     }
-  ],
-  "schedules": []
+  ]
 }
