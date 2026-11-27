@@ -332,31 +332,6 @@
       "updatedAt": "2026-10-26T03:05:51.566Z"
     },
     {
-      "id": "stu_1793377010945_uzghx",
-      "username": "siswa.rian.resmi",
-      "name": "Rian Pratama",
-      "role": "siswa",
-      "gender": "Laki-laki",
-      "kelas": "Kelas 7",
-      "initialPassword": "123456",
-      "password": "123456",
-      "passwordHash": "72b22dbf2916c98ddd64c3a03c64ff37dee932397c458d61858155176b0343e6eb04ae4bba89f4034ef08b2076f0c0cfa1c57c458d3c4b901607d0f533063ac5",
-      "salt": "8f3fa1fe2719f8b4f4fc6e37af3c6530",
-      "mustChangePassword": false,
-      "isActive": true,
-      "qrToken": "TAMVESTA:STUDENT:stu_1793377010945_uzghx:50e2cbb5a801b0d6",
-      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Rian%20Pratama&backgroundColor=0284c7",
-      "createdAt": "2026-10-30T16:16:50.945Z",
-      "updatedAt": "2026-10-30T17:10:19.141Z",
-      "isOfficial": true,
-      "isCustom": true,
-      "source": "admin",
-      "isDemo": false,
-      "passwordChanged": true,
-      "phone": "494646499",
-      "email": "sjkslsksksnn@kimel.com"
-    },
-    {
       "id": "stu_1793373992097_jv1v1",
       "username": "graniat",
       "name": "Alvaro Pratama Herlen",
@@ -376,8 +351,7 @@
       "salt": "7e1e10ed5203669f3d107fecf5f68dfa",
       "phone": "0895410591097",
       "email": "paro.pratama.herlenn@gmail.com",
-      "passwordChanged": true,
-      "isVerified": true
+      "passwordChanged": true
     },
     {
       "id": "stu_1793384582080_7ddbl",
@@ -422,7 +396,8 @@
       "isOfficial": true,
       "isCustom": true,
       "source": "admin",
-      "isDemo": false
+      "isDemo": false,
+      "isVerified": true
     }
   ],
   "subjects": [],
@@ -635,8 +610,11 @@
     "guru.matematika",
     "guru.bahasa",
     "kepala.sekolah",
-    "panitia.osis"
+    "panitia.osis",
+    "stu_1793377010945_uzghx",
+    "siswa.rian.resmi"
   ],
+  "schedules": [],
   "schoolClasses": [
     {
       "id": "class_7a",
@@ -686,6 +664,5 @@
       "createdAt": "2026-11-27T10:17:47.732Z",
       "updatedAt": "2026-11-27T10:17:47.732Z"
     }
-  ],
-  "schedules": []
+  ]
 }
