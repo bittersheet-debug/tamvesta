@@ -13,7 +13,8 @@
       "isActive": true,
       "qrToken": "TAMVESTA:STUDENT:user_admin_tamansiswa:785efa956b468c8f",
       "createdAt": "2026-10-24T08:22:45.298Z",
-      "updatedAt": "2026-10-24T08:22:45.298Z"
+      "updatedAt": "2026-10-24T08:22:45.298Z",
+      "isVerified": true
     },
     {
       "id": "user_staff_bambang_kepsek",
@@ -29,7 +30,8 @@
       "qrToken": "TAMVESTA:STUDENT:user_staff_bambang_kepsek:d592cc82bedb9886",
       "createdAt": "2026-10-24T08:22:46.821Z",
       "updatedAt": "2026-10-24T08:22:46.821Z",
-      "password": "Tamvesta!B2601"
+      "password": "Tamvesta!B2601",
+      "isVerified": true
     },
     {
       "id": "user_staff_titus_yayasan",
@@ -45,8 +47,7 @@
       "qrToken": "TAMVESTA:STUDENT:user_staff_titus_yayasan:6cbaf18c0cf01ff8",
       "createdAt": "2026-10-24T08:22:46.837Z",
       "updatedAt": "2026-10-24T08:22:46.837Z",
-      "password": "Tamvesta!T2602",
-      "isVerified": true
+      "password": "Tamvesta!T2602"
     },
     {
       "id": "user_staff_margaretha_h",
@@ -62,8 +63,7 @@
       "qrToken": "TAMVESTA:STUDENT:user_staff_margaretha_h:a28a934b97b88142",
       "createdAt": "2026-10-24T08:22:46.854Z",
       "updatedAt": "2026-10-24T08:22:46.854Z",
-      "password": "Tamvesta!M2603",
-      "isVerified": true
+      "password": "Tamvesta!M2603"
     },
     {
       "id": "user_staff_bambang_operator",
@@ -79,7 +79,8 @@
       "qrToken": "TAMVESTA:STUDENT:user_staff_bambang_operator:fc992c0f9fb9de13",
       "createdAt": "2026-10-24T08:22:46.865Z",
       "updatedAt": "2026-10-24T08:22:46.865Z",
-      "password": "Tamvesta!B2604"
+      "password": "Tamvesta!B2604",
+      "isVerified": true
     },
     {
       "id": "user_staff_haliza_tu",
@@ -95,8 +96,7 @@
       "qrToken": "TAMVESTA:STUDENT:user_staff_haliza_tu:d381f9125fc3ff05",
       "createdAt": "2026-10-24T08:22:46.882Z",
       "updatedAt": "2026-10-24T08:22:46.882Z",
-      "password": "Tamvesta!H2605",
-      "isVerified": true
+      "password": "Tamvesta!H2605"
     },
     {
       "id": "user_staff_maidarlis",
@@ -310,7 +310,8 @@
       "qrToken": "TAMVESTA:STUDENT:user_staff_angga_satpam:b970654ecf6fa094",
       "createdAt": "2026-10-24T08:22:47.082Z",
       "updatedAt": "2026-10-24T08:22:47.082Z",
-      "password": "Tamvesta!A2617"
+      "password": "Tamvesta!A2617",
+      "isVerified": false
     },
     {
       "id": "user_support_tamvesta",
