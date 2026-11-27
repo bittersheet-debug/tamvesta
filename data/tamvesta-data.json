@@ -376,7 +376,8 @@
       "salt": "7e1e10ed5203669f3d107fecf5f68dfa",
       "phone": "0895410591097",
       "email": "paro.pratama.herlenn@gmail.com",
-      "passwordChanged": true
+      "passwordChanged": true,
+      "isAlumni": true
     },
     {
       "id": "stu_1793384582080_7ddbl",
@@ -421,8 +422,7 @@
       "isOfficial": true,
       "isCustom": true,
       "source": "admin",
-      "isDemo": false,
-      "isVerified": true
+      "isDemo": false
     }
   ],
   "subjects": [],
@@ -637,55 +637,55 @@
     "kepala.sekolah",
     "panitia.osis"
   ],
-  "schedules": [],
   "schoolClasses": [
     {
       "id": "class_7a",
       "name": "Kelas 7A",
       "grade": "7",
       "description": "Kelas 7 Unggulan",
-      "createdAt": "2026-11-27T10:17:47.732Z",
-      "updatedAt": "2026-11-27T10:17:47.732Z"
+      "createdAt": "2026-11-27T10:24:44.731Z",
+      "updatedAt": "2026-11-27T10:24:44.731Z"
     },
     {
       "id": "class_7b",
       "name": "Kelas 7B",
       "grade": "7",
       "description": "Kelas 7 Reguler",
-      "createdAt": "2026-11-27T10:17:47.732Z",
-      "updatedAt": "2026-11-27T10:17:47.732Z"
+      "createdAt": "2026-11-27T10:24:44.731Z",
+      "updatedAt": "2026-11-27T10:24:44.731Z"
     },
     {
       "id": "class_8a",
       "name": "Kelas 8A",
       "grade": "8",
       "description": "Kelas 8 Unggulan",
-      "createdAt": "2026-11-27T10:17:47.732Z",
-      "updatedAt": "2026-11-27T10:17:47.732Z"
+      "createdAt": "2026-11-27T10:24:44.731Z",
+      "updatedAt": "2026-11-27T10:24:44.731Z"
     },
     {
       "id": "class_8b",
       "name": "Kelas 8B",
       "grade": "8",
       "description": "Kelas 8 Reguler",
-      "createdAt": "2026-11-27T10:17:47.732Z",
-      "updatedAt": "2026-11-27T10:17:47.732Z"
+      "createdAt": "2026-11-27T10:24:44.731Z",
+      "updatedAt": "2026-11-27T10:24:44.731Z"
     },
     {
       "id": "class_9a",
       "name": "Kelas 9A",
       "grade": "9",
       "description": "Kelas 9 Persiapan Ujian",
-      "createdAt": "2026-11-27T10:17:47.732Z",
-      "updatedAt": "2026-11-27T10:17:47.732Z"
+      "createdAt": "2026-11-27T10:24:44.731Z",
+      "updatedAt": "2026-11-27T10:24:44.731Z"
     },
     {
       "id": "class_9b",
       "name": "Kelas 9B",
       "grade": "9",
       "description": "Kelas 9 Reguler",
-      "createdAt": "2026-11-27T10:17:47.732Z",
-      "updatedAt": "2026-11-27T10:17:47.732Z"
+      "createdAt": "2026-11-27T10:24:44.731Z",
+      "updatedAt": "2026-11-27T10:24:44.731Z"
     }
-  ]
+  ],
+  "schedules": []
 }
