@@ -28,7 +28,9 @@
       "qrToken": "TAMVESTA:STUDENT:user_staff_bambang_kepsek:d592cc82bedb9886",
       "createdAt": "2026-10-24T08:22:46.821Z",
       "updatedAt": "2026-10-24T08:22:46.821Z",
-      "tokenVersion": 0
+      "tokenVersion": 0,
+      "isVerified": true,
+      "badgeType": "blue"
     },
     {
       "id": "user_staff_titus_yayasan",
@@ -862,5 +864,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 180
+  "syncVersion": 189
 }
