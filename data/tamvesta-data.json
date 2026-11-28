@@ -399,24 +399,6 @@
   "attendanceRecords": [],
   "passwordResetRequests": [
     {
-      "id": "pr_1793379084239",
-      "ticketNumber": "TKT-574403",
-      "userId": "stu_1793377010945_uzghx",
-      "username": "siswa.rian.resmi",
-      "name": "Rian Pratama",
-      "kelas": "Kelas 7",
-      "role": "siswa",
-      "reason": "Pengajuan ganti sandi berkala",
-      "status": "approved",
-      "newPasswordHash": "1a3a6c21e8783c7bad84e7156b2a6c9b935a2996c2eeab2d6abb764e388304204f4879511103e652a8320ee979b735c378c5a81a4cbe1ddf1d3ca39006901447",
-      "newSalt": "264d2c9588c3de3d98c10077b8c82422",
-      "newPassword": "passwordBaru789",
-      "createdAt": "2026-10-30T16:51:24.239Z",
-      "processedAt": "2026-10-30T16:56:16.713Z",
-      "processedBy": "Administrator Tamansiswa Batam",
-      "adminNote": "Telah Disetujui"
-    },
-    {
       "id": "pr_1795842055353",
       "ticketNumber": "TKT-302331",
       "userId": "stu_1795839550817_nsfxm",
@@ -448,6 +430,24 @@
       "newPassword": "Paro Pratama1",
       "createdAt": "2026-10-30T16:31:39.590Z",
       "processedAt": "2026-10-30T16:56:17.016Z",
+      "processedBy": "Administrator Tamansiswa Batam",
+      "adminNote": "Telah Disetujui"
+    },
+    {
+      "id": "pr_1793379084239",
+      "ticketNumber": "TKT-574403",
+      "userId": "stu_1793377010945_uzghx",
+      "username": "siswa.rian.resmi",
+      "name": "Rian Pratama",
+      "kelas": "Kelas 7",
+      "role": "siswa",
+      "reason": "Pengajuan ganti sandi berkala",
+      "status": "approved",
+      "newPasswordHash": "1a3a6c21e8783c7bad84e7156b2a6c9b935a2996c2eeab2d6abb764e388304204f4879511103e652a8320ee979b735c378c5a81a4cbe1ddf1d3ca39006901447",
+      "newSalt": "264d2c9588c3de3d98c10077b8c82422",
+      "newPassword": "passwordBaru789",
+      "createdAt": "2026-10-30T16:51:24.239Z",
+      "processedAt": "2026-10-30T16:56:16.713Z",
       "processedBy": "Administrator Tamansiswa Batam",
       "adminNote": "Telah Disetujui"
     }
@@ -693,13 +693,13 @@
   "gameRooms": [],
   "refreshSignals": [
     {
-      "id": "sig_1795866977157_aque",
-      "userId": "stu_1795866977051_m9dt1",
-      "userName": "Valen Yudha Pratama",
-      "userUsername": "valenyp",
-      "userKelas": "Kelas 9",
-      "timestamp": "2026-11-28T11:56:17.131Z",
-      "formattedTime": "11.56.17 WIB",
+      "id": "sig_1795866980375_8eiu",
+      "userId": "user_admin_tamansiswa",
+      "userName": "Administrator Tamansiswa Batam",
+      "userUsername": "TAMANSISWA",
+      "userKelas": "-",
+      "timestamp": "2026-11-28T11:56:20.349Z",
+      "formattedTime": "11.56.20 WIB",
       "status": "received"
     },
     {
@@ -960,5 +960,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 453
+  "syncVersion": 456
 }
