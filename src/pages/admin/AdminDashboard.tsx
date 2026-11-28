@@ -411,9 +411,9 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
   };
 
   const handleToggleVerified = async (userId: string) => {
-    // Jangan toggle jika user adalah guru (permanen)
+    // Jangan toggle jika user adalah guru/staf (centang biru permanen)
     const targetStaff = staffList.find((s) => s.id === userId);
-    if (targetStaff?.role === 'guru') return;
+    if (targetStaff && targetStaff.role !== 'siswa') return;
     try {
       const res = await api.toggleVerifiedBadge(userId);
       setStudents((prev) =>
@@ -3284,7 +3284,7 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
                     <th className="p-3.5">Jabatan</th>
                     <th className="p-3.5">Username</th>
                     <th className="p-3.5">Password Awal</th>
-                    <th className="p-3.5 text-center">Centang Hijau</th>
+                    <th className="p-3.5 text-center">Centang Biru</th>
                     <th className="p-3.5">Role Akses</th>
                     <th className="p-3.5 text-center">Status</th>
                     <th className="p-3.5 text-right">Aksi</th>
@@ -3381,29 +3381,13 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
                             </div>
                           </td>
                           <td className="p-3.5 text-center">
-                            {staff.role === 'guru' ? (
-                              // Guru: centang PERMANEN — tidak bisa dinonaktifkan
-                              <span
-                                className="p-1.5 rounded-lg border inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-50 text-emerald-700 border-emerald-300 cursor-default"
-                                title="Guru Terverifikasi Permanen (Centang Hijau Resmi)"
-                              >
-                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600" />
-                                <span className="text-[10px]">Permanen</span>
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => handleToggleVerified(staff.id)}
-                                className={`p-1.5 rounded-lg border transition inline-flex items-center gap-1 text-[11px] font-bold ${
-                                  staff.isVerified
-                                    ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                                    : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100 hover:text-slate-700'
-                                }`}
-                                title={staff.isVerified ? 'Hilangkan centang biru' : 'Berikan centang biru resmi'}
-                              >
-                                <ShieldCheck className={`w-3.5 h-3.5 ${staff.isVerified ? 'text-blue-600 fill-blue-600' : 'text-slate-400'}`} />
-                                <span className="text-[10px]">{staff.isVerified ? 'Verified' : 'Biasa'}</span>
-                              </button>
-                            )}
+                            <span
+                              className="p-1.5 rounded-lg border inline-flex items-center gap-1 text-[11px] font-bold bg-blue-50 text-blue-700 border-blue-200 cursor-default"
+                              title="Guru & Staf Terverifikasi Permanen (Centang Biru Resmi)"
+                            >
+                              <ShieldCheck className="w-3.5 h-3.5 text-blue-600 fill-blue-600" />
+                              <span className="text-[10px]">Centang Biru</span>
+                            </span>
                           </td>
                           <td className="p-3.5">
                             <span
@@ -5298,12 +5282,12 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
                   }}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500"
                 >
-                  <option value="guru">Guru (Pendidik Resmi • Centang Hijau Otomatis)</option>
-                  <option value="admin">Administrator / Operator Dapodik</option>
-                  <option value="tata_usaha">Tata Usaha & Keuangan</option>
-                  <option value="kepala_sekolah">Kepala Sekolah / Yayasan</option>
-                  <option value="satpam">Satpam & Keamanan Sekolah</option>
-                  <option value="panitia">Panitia Absensi & Event</option>
+                  <option value="guru">Guru (Pendidik Resmi • Centang Biru Otomatis)</option>
+                  <option value="admin">Administrator / Operator Dapodik (Centang Biru Otomatis)</option>
+                  <option value="tata_usaha">Tata Usaha & Keuangan (Centang Biru Otomatis)</option>
+                  <option value="kepala_sekolah">Kepala Sekolah / Yayasan (Centang Biru Otomatis)</option>
+                  <option value="satpam">Satpam & Keamanan Sekolah (Centang Biru Otomatis)</option>
+                  <option value="panitia">Panitia Absensi & Event (Centang Biru Otomatis)</option>
                 </select>
               </div>
 

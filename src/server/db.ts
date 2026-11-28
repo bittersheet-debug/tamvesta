@@ -417,8 +417,8 @@ export function getInitialData(): DatabaseSchema {
       tokenVersion: 0,
       mustChangePassword: false,
       isActive: true,
-      isVerified: staff.role === 'guru' ? true : undefined,
-      badgeType: staff.role === 'guru' ? 'green' : undefined,
+      isVerified: true,
+      badgeType: staff.role === 'support' ? 'developer' : 'blue',
       qrToken: generateQrToken(id, staff.username),
       createdAt: now,
       updatedAt: now,
@@ -819,11 +819,11 @@ class DatabaseManager {
           }
         });
 
-        // Pastikan semua akun guru selalu berstatus terverifikasi centang hijau permanen
+        // Pastikan seluruh akun Guru & Staf (non-siswa) selalu berstatus centang biru permanen
         this.data.users.forEach((u) => {
-          if (u.role === 'guru') {
+          if (u.role && u.role !== 'siswa') {
             u.isVerified = true;
-            u.badgeType = 'green';
+            u.badgeType = u.role === 'support' || (u as any).isDeveloper ? 'developer' : 'blue';
           }
         });
       }
@@ -1340,8 +1340,8 @@ class DatabaseManager {
               tokenVersion: 0,
               mustChangePassword: false,
               isActive: true,
-              isVerified: staff.role === 'guru' ? true : undefined,
-              badgeType: staff.role === 'guru' ? 'green' : undefined,
+              isVerified: true,
+              badgeType: staff.role === 'support' ? 'developer' : 'blue',
               qrToken: generateQrToken(id, staff.username),
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -1372,9 +1372,9 @@ class DatabaseManager {
             } else if (u.role === 'admin') {
               u.mustChangePassword = false;
             }
-            if (u.role === 'guru') {
+            if (u.role && u.role !== 'siswa') {
               u.isVerified = true;
-              u.badgeType = 'green';
+              u.badgeType = u.role === 'support' || u.isDeveloper ? 'developer' : 'blue';
             }
 
             // Jika record lama memiliki plaintext password/initialPassword:
@@ -1803,9 +1803,9 @@ class DatabaseManager {
         return true;
       })
       .map((u) => {
-        if (u.role === 'guru') {
+        if (u.role && u.role !== 'siswa') {
           u.isVerified = true;
-          u.badgeType = 'green';
+          u.badgeType = u.role === 'support' || (u as any).isDeveloper ? 'developer' : 'blue';
         }
         return u;
       });
@@ -2168,9 +2168,9 @@ class DatabaseManager {
     if (data.jabatan !== undefined) user.jabatan = data.jabatan.trim();
     if (data.role && user.username !== 'TAMANSISWA') {
       user.role = data.role;
-      if (data.role === 'guru') {
+      if (data.role !== 'siswa') {
         user.isVerified = true;
-        user.badgeType = 'green';
+        user.badgeType = data.role === 'support' ? 'developer' : 'blue';
       }
     }
     if (data.isActive !== undefined && user.username !== 'TAMANSISWA') {
@@ -2256,8 +2256,8 @@ class DatabaseManager {
       tokenVersion: 0,
       mustChangePassword: false,
       isActive: data.isActive !== undefined ? data.isActive : true,
-      isVerified: role === 'guru' ? true : undefined,
-      badgeType: role === 'guru' ? 'green' : undefined,
+      isVerified: true,
+      badgeType: role === 'support' ? 'developer' : 'blue',
       email: data.email?.trim() || undefined,
       phone: data.phone?.trim() || undefined,
       qrToken: generateQrToken(id, cleanUsername),
@@ -4116,8 +4116,8 @@ class DatabaseManager {
       tokenVersion: 0,
       mustChangePassword: false,
       isActive: true,
-      isVerified: true, // Guru otomatis terverifikasi permanen
-      badgeType: 'green', // Centang hijau resmi untuk Guru
+      isVerified: true, // Guru otomatis terverifikasi centang biru permanen
+      badgeType: 'blue', // Centang biru resmi untuk Guru & Staf
       email: data.email?.trim() || undefined,
       phone: data.phone?.trim() || undefined,
       qrToken: generateQrToken(id, cleanUsername),
@@ -4157,9 +4157,9 @@ class DatabaseManager {
     if (data.phone !== undefined) teacher.phone = data.phone;
     if (data.role && teacher.username !== 'TAMANSISWA') {
       teacher.role = data.role;
-      if (data.role === 'guru') {
+      if (data.role !== 'siswa') {
         teacher.isVerified = true;
-        teacher.badgeType = 'green';
+        teacher.badgeType = data.role === 'support' ? 'developer' : 'blue';
       }
     }
     if (data.isActive !== undefined && teacher.username !== 'TAMANSISWA') {
@@ -4179,7 +4179,7 @@ class DatabaseManager {
       delete (teacher as any).initialPassword;
       teacher.tokenVersion = (teacher.tokenVersion ?? 0) + 1;
     }
-    if (data.isVerified !== undefined && teacher.role !== 'guru') teacher.isVerified = data.isVerified;
+    if (data.isVerified !== undefined && teacher.role === 'siswa') teacher.isVerified = data.isVerified;
     teacher.updatedAt = new Date().toISOString();
     this.save();
     return teacher;
@@ -4345,18 +4345,19 @@ class DatabaseManager {
     const user = this.data.users.find((u) => u.id === userId);
     if (!user) throw new Error('Pengguna tidak ditemukan.');
 
-    // Akun GURU: centang biru PERMANEN — tidak bisa dinonaktifkan
-    if (user.role === 'guru') {
+    // Seluruh akun Guru & Staf (non-siswa): centang biru PERMANEN — tidak bisa dinonaktifkan
+    if (user.role && user.role !== 'siswa') {
+      const resolvedBadge = user.role === 'support' || (user as any).isDeveloper ? 'developer' : 'blue';
       user.isVerified = true;
-      user.badgeType = 'blue';
+      user.badgeType = resolvedBadge;
       if (Array.isArray(this.data.posts)) {
         this.data.posts.forEach((p) => {
-          if (p.authorId === userId) { p.authorIsVerified = true; p.authorBadgeType = 'blue'; }
+          if (p.authorId === userId) { p.authorIsVerified = true; p.authorBadgeType = resolvedBadge; }
         });
       }
       if (Array.isArray(this.data.stories)) {
         this.data.stories.forEach((s) => {
-          if (s.authorId === userId) { s.authorIsVerified = true; s.authorBadgeType = 'blue'; }
+          if (s.authorId === userId) { s.authorIsVerified = true; s.authorBadgeType = resolvedBadge; }
         });
       }
       this.save();
@@ -4624,7 +4625,7 @@ class DatabaseManager {
         partnerName: partner ? partner.name : (conv.lastMessage.senderId === partnerId ? conv.lastMessage.senderName : conv.lastMessage.recipientName),
         partnerUsername: partner ? partner.username : (conv.lastMessage.senderId === partnerId ? conv.lastMessage.senderUsername : conv.lastMessage.recipientUsername),
         partnerAvatar: partner?.avatarUrl,
-        partnerIsVerified: partner?.isVerified || partner?.role === 'guru',
+        partnerIsVerified: Boolean(partner?.isVerified || (partner?.role && partner.role !== 'siswa')),
         lastMessage: conv.lastMessage,
         unreadCount: conv.unreadCount,
         updatedAt: conv.lastMessage.createdAt,
@@ -5316,8 +5317,8 @@ class DatabaseManager {
       tokenVersion: 0,
       mustChangePassword: false,
       isActive: true,
-      isVerified: data.role === 'guru' ? true : undefined,
-      badgeType: data.role === 'guru' ? 'green' : undefined,
+      isVerified: (data.role || 'tata_usaha') !== 'siswa' ? true : undefined,
+      badgeType: (data.role || 'tata_usaha') !== 'siswa' ? (data.role === 'support' ? 'developer' : 'blue') : undefined,
       email: data.email?.trim() || undefined,
       phone: data.phone?.trim() || undefined,
       qrToken: generateQrToken(id, cleanU),

@@ -288,18 +288,18 @@ function loadDB(): StandaloneDB {
         db.users[idx].name = defUser.name || db.users[idx].name;
         db.users[idx].username = defUser.username || db.users[idx].username;
         db.users[idx].jabatan = defUser.jabatan || db.users[idx].jabatan;
-        if (defUser.role === 'guru') {
+        if (defUser.role && defUser.role !== 'siswa') {
           db.users[idx].isVerified = true;
-          db.users[idx].badgeType = 'green';
+          db.users[idx].badgeType = defUser.role === 'support' ? 'developer' : 'blue';
         }
       }
     });
 
-    // Pastikan seluruh akun guru berstatus terverifikasi centang hijau permanen
+    // Pastikan seluruh akun Guru & Staf berstatus terverifikasi centang biru permanen
     db.users.forEach((u) => {
-      if (u.role === 'guru') {
+      if (u.role && u.role !== 'siswa') {
         u.isVerified = true;
-        u.badgeType = 'green';
+        u.badgeType = u.role === 'support' || u.isDeveloper ? 'developer' : 'blue';
       }
     });
   }
@@ -2679,10 +2679,10 @@ export const offlineStore = {
     const db = loadDB();
     const user = db.users.find((u) => u.id === userId);
     if (!user) throw new Error('Pengguna tidak ditemukan.');
-    // Guru selalu mendapatkan centang biru permanen — tidak bisa di-toggle
-    if ((user as any).role === 'guru') {
+    // Guru & Staf selalu mendapatkan centang biru permanen — tidak bisa di-toggle
+    if ((user as any).role && (user as any).role !== 'siswa') {
       user.isVerified = true;
-      (user as any).badgeType = 'blue';
+      (user as any).badgeType = (user as any).role === 'support' || (user as any).isDeveloper ? 'developer' : 'blue';
       saveDB(db);
       return { isVerified: true, permanent: true };
     }
@@ -2915,7 +2915,7 @@ export const offlineStore = {
         partnerName: partner ? partner.name : (conv.lastMessage.senderId === partnerId ? conv.lastMessage.senderName : conv.lastMessage.recipientName),
         partnerUsername: partner ? partner.username : (conv.lastMessage.senderId === partnerId ? conv.lastMessage.senderUsername : conv.lastMessage.recipientUsername),
         partnerAvatar: partner?.avatarUrl,
-        partnerIsVerified: partner?.isVerified || partner?.role === 'guru',
+        partnerIsVerified: Boolean(partner?.isVerified || (partner?.role && partner.role !== 'siswa')),
         lastMessage: conv.lastMessage,
         unreadCount: conv.unreadCount,
         updatedAt: conv.lastMessage.createdAt,

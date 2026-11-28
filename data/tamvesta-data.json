@@ -13,7 +13,9 @@
       "qrToken": "TAMVESTA:STUDENT:user_admin_tamansiswa:785efa956b468c8f",
       "createdAt": "2026-10-24T08:22:45.298Z",
       "updatedAt": "2026-10-24T08:22:45.298Z",
-      "tokenVersion": 0
+      "tokenVersion": 0,
+      "isVerified": true,
+      "badgeType": "blue"
     },
     {
       "id": "user_staff_bambang_kepsek",
@@ -28,7 +30,9 @@
       "qrToken": "TAMVESTA:STUDENT:user_staff_bambang_kepsek:d592cc82bedb9886",
       "createdAt": "2026-10-24T08:22:46.821Z",
       "updatedAt": "2026-10-24T08:22:46.821Z",
-      "tokenVersion": 0
+      "tokenVersion": 0,
+      "isVerified": true,
+      "badgeType": "blue"
     },
     {
       "id": "user_staff_titus_yayasan",
@@ -43,7 +47,9 @@
       "qrToken": "TAMVESTA:STUDENT:user_staff_titus_yayasan:6cbaf18c0cf01ff8",
       "createdAt": "2026-10-24T08:22:46.837Z",
       "updatedAt": "2026-10-24T08:22:46.837Z",
-      "tokenVersion": 0
+      "tokenVersion": 0,
+      "isVerified": true,
+      "badgeType": "blue"
     },
     {
       "id": "user_staff_margaretha_h",
@@ -58,7 +64,9 @@
       "qrToken": "TAMVESTA:STUDENT:user_staff_margaretha_h:a28a934b97b88142",
       "createdAt": "2026-10-24T08:22:46.854Z",
       "updatedAt": "2026-10-24T08:22:46.854Z",
-      "tokenVersion": 0
+      "tokenVersion": 0,
+      "isVerified": true,
+      "badgeType": "blue"
     },
     {
       "id": "user_staff_bambang_operator",
@@ -73,7 +81,9 @@
       "qrToken": "TAMVESTA:STUDENT:user_staff_bambang_operator:fc992c0f9fb9de13",
       "createdAt": "2026-10-24T08:22:46.865Z",
       "updatedAt": "2026-10-24T08:22:46.865Z",
-      "tokenVersion": 0
+      "tokenVersion": 0,
+      "isVerified": true,
+      "badgeType": "blue"
     },
     {
       "id": "user_staff_haliza_tu",
@@ -88,7 +98,9 @@
       "qrToken": "TAMVESTA:STUDENT:user_staff_haliza_tu:d381f9125fc3ff05",
       "createdAt": "2026-10-24T08:22:46.882Z",
       "updatedAt": "2026-10-24T08:22:46.882Z",
-      "tokenVersion": 0
+      "tokenVersion": 0,
+      "isVerified": true,
+      "badgeType": "blue"
     },
     {
       "id": "user_staff_maidarlis",
@@ -104,7 +116,7 @@
       "createdAt": "2026-10-24T08:22:46.898Z",
       "updatedAt": "2026-10-24T08:22:46.899Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -121,7 +133,7 @@
       "createdAt": "2026-10-24T08:22:46.915Z",
       "updatedAt": "2026-10-24T08:22:46.915Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -138,7 +150,7 @@
       "createdAt": "2026-10-24T08:22:46.927Z",
       "updatedAt": "2026-10-24T08:22:46.927Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -155,7 +167,7 @@
       "createdAt": "2026-10-24T08:22:46.946Z",
       "updatedAt": "2026-10-24T08:22:46.946Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -172,7 +184,7 @@
       "createdAt": "2026-10-24T08:22:46.969Z",
       "updatedAt": "2026-10-24T08:22:46.969Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -189,7 +201,7 @@
       "createdAt": "2026-10-24T08:22:46.986Z",
       "updatedAt": "2026-10-24T08:22:46.986Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -206,7 +218,7 @@
       "createdAt": "2026-10-24T08:22:47.002Z",
       "updatedAt": "2026-10-24T08:22:47.002Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -223,7 +235,7 @@
       "createdAt": "2026-10-24T08:22:47.018Z",
       "updatedAt": "2026-10-24T08:22:47.019Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -240,7 +252,7 @@
       "createdAt": "2026-10-24T08:22:47.029Z",
       "updatedAt": "2026-10-24T08:22:47.029Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -257,7 +269,7 @@
       "createdAt": "2026-10-24T08:22:47.047Z",
       "updatedAt": "2026-10-24T08:22:47.047Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -274,7 +286,7 @@
       "createdAt": "2026-10-24T08:22:47.066Z",
       "updatedAt": "2026-10-24T08:22:47.066Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -290,7 +302,9 @@
       "qrToken": "TAMVESTA:STUDENT:user_staff_angga_satpam:b970654ecf6fa094",
       "createdAt": "2026-10-24T08:22:47.082Z",
       "updatedAt": "2026-10-24T08:22:47.082Z",
-      "tokenVersion": 0
+      "tokenVersion": 0,
+      "isVerified": true,
+      "badgeType": "blue"
     },
     {
       "id": "user_support_tamvesta",
