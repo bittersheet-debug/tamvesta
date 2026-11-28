@@ -415,6 +415,20 @@
   "attendanceRecords": [],
   "passwordResetRequests": [
     {
+      "id": "pr_1795842055353",
+      "ticketNumber": "TKT-302331",
+      "userId": "stu_1795839550817_nsfxm",
+      "username": "kimel",
+      "name": "Alvaro Pratama Herlen",
+      "kelas": "Kelas 8",
+      "role": "siswa",
+      "reason": "Pengajuan ganti sandi berkala",
+      "status": "pending",
+      "newPasswordHash": "pbkdf2v2$e7e613e2cec9fe62062f973c63b9efbfc38b05511d00e5d987904e2ce680cf263720b03a8bca9fe26498a9aa8ffbb8d8fa5fefc56699f666507228e6f6f78830",
+      "newSalt": "347f7a5b2ca2854c6dde822c6c71f6dd",
+      "createdAt": "2026-11-28T05:00:55.353Z"
+    },
+    {
       "id": "pr_1793377899590",
       "ticketNumber": "TKT-994704",
       "userId": "stu_1793373992097_jv1v1",
@@ -508,6 +522,18 @@
   "stories": [],
   "notes": [],
   "notifications": [
+    {
+      "id": "notif_1795842055353_zhxzc",
+      "title": "Pengajuan Ganti Sandi Baru",
+      "message": "Alvaro Pratama Herlen (Kelas 8) mengajukan ganti sandi (Tiket: TKT-302331).",
+      "type": "security",
+      "isImportant": false,
+      "linkType": "none",
+      "targetRole": "admin",
+      "readBy": [],
+      "deletedBy": [],
+      "createdAt": "2026-11-28T05:00:55.353Z"
+    },
     {
       "id": "notif_1794044519451_8fhlo",
       "title": "✅ Pendaftaran Siswa Di-ACC",
@@ -718,5 +744,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 69
+  "syncVersion": 81
 }
