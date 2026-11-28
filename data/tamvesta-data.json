@@ -373,27 +373,6 @@
       "tokenVersion": 0
     },
     {
-      "id": "stu_1793384638396_vxd3b",
-      "username": "key",
-      "name": "Kheisya Nachua Billa",
-      "role": "siswa",
-      "gender": "Perempuan",
-      "kelas": "Kelas 9",
-      "passwordHash": "404c06180ed54bcfcd3ddce181f0a16a02695e2c12a1fceccd150be2f235ab4926a7b82d0b08630bf970a118d5380a695493cb6715e9a8967391b3b45f414a53",
-      "salt": "99840d995c8357114413a18d4e2e8dd0",
-      "mustChangePassword": false,
-      "isActive": true,
-      "qrToken": "TAMVESTA:STUDENT:stu_1793384638396_vxd3b:400314a3d6cf6e60",
-      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Kheisya%20Nachua%20Billa&backgroundColor=0284c7",
-      "createdAt": "2026-10-30T18:23:58.396Z",
-      "updatedAt": "2026-10-31T07:57:50.805Z",
-      "isOfficial": true,
-      "isCustom": true,
-      "source": "admin",
-      "isDemo": false,
-      "tokenVersion": 0
-    },
-    {
       "id": "stu_1795839550817_nsfxm",
       "username": "kimel",
       "name": "Alvaro Pratama Herlen",
@@ -553,6 +532,35 @@
   "stories": [],
   "notes": [],
   "notifications": [
+    {
+      "id": "notif_1795866922621_pl3s6",
+      "title": "AKUN DIHAPUS PERMANEN",
+      "message": "Admin lain (Administrator Tamansiswa Batam) telah menghapus permanen akun Kheisya Nachua Billa (@key • Siswa) dari database TAMVESTA.",
+      "type": "admin_account_event",
+      "isImportant": true,
+      "linkType": "students",
+      "linkId": "stu_1793384638396_vxd3b",
+      "targetRole": "admin",
+      "targetRoles": [
+        "admin"
+      ],
+      "excludeUserId": "user_admin_tamansiswa",
+      "excludeDeviceId": "dev_b85e8af9-04e8-45bc-8637-4e5e3eff251c",
+      "dedupeKey": "admin_acct:deleted:stu_1793384638396_vxd3b:deleted_598622307",
+      "actorId": "user_admin_tamansiswa",
+      "actorName": "Administrator Tamansiswa Batam",
+      "statusLabel": "Status: Dihapus permanen.",
+      "metadata": {
+        "action": "deleted",
+        "targetUserId": "stu_1793384638396_vxd3b",
+        "targetUsername": "key",
+        "targetName": "Kheisya Nachua Billa",
+        "targetRole": "siswa"
+      },
+      "readBy": [],
+      "deletedBy": [],
+      "createdAt": "2026-11-28T11:55:22.621Z"
+    },
     {
       "id": "notif_1795849281950_kf5di",
       "title": "Selamat Datang di TAMVESTA Mobile!",
@@ -764,7 +772,18 @@
       "updatedAt": "2026-11-28T04:18:00.497Z"
     }
   ],
-  "activityLogs": [],
+  "activityLogs": [
+    {
+      "type": "account_deleted",
+      "title": "Penghapusan Akun Permanen",
+      "description": "Akun SISWA @key (Kheisya Nachua Billa) telah dihapus secara permanen dari database.",
+      "userId": "stu_1793384638396_vxd3b",
+      "userName": "Kheisya Nachua Billa",
+      "userRole": "siswa",
+      "id": "log_1795866922616_gfgq",
+      "timestamp": "2026-11-28T11:55:22.616Z"
+    }
+  ],
   "deletedUserIds": [
     "siswa.smp7a.001",
     "siswa.smp7a.002",
@@ -798,7 +817,9 @@
     "kepala.sekolah",
     "panitia.osis",
     "stu_1793384582080_7ddbl",
-    "aldongker"
+    "aldongker",
+    "stu_1793384638396_vxd3b",
+    "key"
   ],
   "deletedPostIds": [],
   "deletedStoryIds": [],
@@ -831,5 +852,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 410
+  "syncVersion": 422
 }
