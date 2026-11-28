@@ -540,6 +540,19 @@
   "notes": [],
   "notifications": [
     {
+      "id": "notif_1795842238638_a88a3",
+      "title": "Tiket Kendala Teknis TAMVESTA",
+      "message": "Alvaro Pratama Herlen melaporkan: \"Aplikasi Tidak Bisa\" (error_bug).",
+      "type": "app_report",
+      "isImportant": false,
+      "linkType": "reports",
+      "linkId": "rep_1795842238635_si06",
+      "targetRole": "support",
+      "readBy": [],
+      "deletedBy": [],
+      "createdAt": "2026-11-28T05:03:58.638Z"
+    },
+    {
       "id": "notif_1795842191506_u0z4b",
       "title": "ujian",
       "message": "test",
@@ -691,7 +704,23 @@
   "studentNotes": [],
   "lostFoundItems": [],
   "activityPermissions": [],
-  "appReports": [],
+  "appReports": [
+    {
+      "id": "rep_1795842238635_si06",
+      "reporterId": "stu_1795839550817_nsfxm",
+      "reporterName": "Alvaro Pratama Herlen",
+      "reporterUsername": "kimel",
+      "reporterKelas": "Kelas 8",
+      "reportType": "error_bug",
+      "title": "Aplikasi Tidak Bisa",
+      "description": "Hsjznznz",
+      "incidentTime": "2026-11-28T05:03:56.935Z",
+      "status": "laporan_diterima",
+      "targetHandler": "support",
+      "createdAt": "2026-11-28T05:03:58.635Z",
+      "updatedAt": "2026-11-28T05:03:58.635Z"
+    }
+  ],
   "schedules": [],
   "deviceSessions": [
     {
@@ -815,5 +844,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 145
+  "syncVersion": 165
 }
