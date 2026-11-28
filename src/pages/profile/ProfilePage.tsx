@@ -23,6 +23,7 @@ import {
 import { useAuth } from '../../context/AuthContext.tsx';
 import { useToast } from '../../context/ToastContext.tsx';
 import { api } from '../../lib/api.ts';
+import { ensurePermissionForFeature, openPermissionManager } from '../../lib/permissionService.ts';
 import { PhotoCropModal } from '../../components/PhotoCropModal.tsx';
 import { PRESET_AVATARS } from '../../constants/presetAvatars.ts';
 import { Smile } from 'lucide-react';
@@ -369,6 +370,19 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onBack }) => {
               <input
                 type="file"
                 accept="image/*"
+                onClick={async (e) => {
+                  const input = e.currentTarget;
+                  if (input.dataset.permChecked === '1') {
+                    delete input.dataset.permChecked;
+                    return;
+                  }
+                  e.preventDefault();
+                  const allowed = await ensurePermissionForFeature('media', 'Ganti Foto Profil');
+                  if (allowed) {
+                    input.dataset.permChecked = '1';
+                    input.click();
+                  }
+                }}
                 onChange={handlePhotoSelect}
                 className="hidden"
               />
@@ -498,14 +512,24 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onBack }) => {
                 <p className="text-xs text-slate-600 leading-relaxed italic">
                   "{user.bio || 'Belum ada bio. Tambahkan bio singkat tentang dirimu!'}"
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setIsEditingBio(true)}
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800"
-                >
-                  <Edit3 className="w-3 h-3" />
-                  <span>{user.bio ? 'Ubah Bio' : 'Tulis Bio'}</span>
-                </button>
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingBio(true)}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800"
+                  >
+                    <Edit3 className="w-3 h-3" />
+                    <span>{user.bio ? 'Ubah Bio' : 'Tulis Bio'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openPermissionManager()}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 hover:text-teal-800 bg-teal-50 hover:bg-teal-100 px-2.5 py-1 rounded-lg border border-teal-200 transition"
+                  >
+                    <ShieldCheck className="w-3 h-3" />
+                    <span>Izin Perangkat</span>
+                  </button>
+                </div>
               </div>
             )}
 

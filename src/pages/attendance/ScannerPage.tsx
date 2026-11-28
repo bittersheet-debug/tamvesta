@@ -24,6 +24,7 @@ import {
 import { Html5Qrcode } from 'html5-qrcode';
 import confetti from 'canvas-confetti';
 import { api } from '../../lib/api.ts';
+import { ensurePermissionForFeature, openPermissionManager } from '../../lib/permissionService.ts';
 import type { AttendanceEvent, AttendanceRecord, ScanResultPayload } from '../../types/index.ts';
 import { useAuth } from '../../context/AuthContext.tsx';
 import { useToast } from '../../context/ToastContext.tsx';
@@ -180,9 +181,18 @@ export const ScannerPage: React.FC<{ onBackToDashboard?: () => void }> = ({ onBa
     }
   };
 
-  // Start Camera immediately without asking permission
+  // Start Camera only after explicit user action & native permission check
   const startCameraScanner = async () => {
     setCameraError(null);
+    const hasCameraPerm = await ensurePermissionForFeature('camera', 'Scanner QR Absensi');
+    if (!hasCameraPerm) {
+      setCameraError(
+        'Izin kamera belum diaktifkan. Aktifkan izin kamera di Pengaturan Aplikasi atau gunakan input kode manual di bawah.'
+      );
+      setIsScanning(false);
+      return;
+    }
+
     try {
       if (!html5QrCodeRef.current) {
         html5QrCodeRef.current = new Html5Qrcode(scannerContainerId);
@@ -252,18 +262,9 @@ export const ScannerPage: React.FC<{ onBackToDashboard?: () => void }> = ({ onBa
     setIsScanning(false);
   };
 
-  // Auto start camera immediately on mount without asking permission
+  // Do NOT auto-start camera silently without user action (privacy & permission compliance)
   useEffect(() => {
-    let active = true;
-    const timer = setTimeout(() => {
-      if (active) {
-        startCameraScanner();
-      }
-    }, 350);
-
     return () => {
-      active = false;
-      clearTimeout(timer);
       stopCameraScanner();
     };
   }, []);

@@ -2,6 +2,7 @@ import { compressImage } from '../lib/imageCompressor.ts';
 import React, { useState } from 'react';
 import { X, Image, Video, Sparkles, Send, Camera } from 'lucide-react';
 import { api } from '../lib/api.ts';
+import { ensurePermissionForFeature } from '../lib/permissionService.ts';
 import { useToast } from '../context/ToastContext.tsx';
 import type { Story } from '../types/index.ts';
 
@@ -126,6 +127,19 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
                 <input
                   type="file"
                   accept="image/*,video/*"
+                  onClick={async (e) => {
+                    const input = e.currentTarget;
+                    if (input.dataset.permChecked === '1') {
+                      delete input.dataset.permChecked;
+                      return;
+                    }
+                    e.preventDefault();
+                    const allowed = await ensurePermissionForFeature('media', 'Unggah Foto/Video Story');
+                    if (allowed) {
+                      input.dataset.permChecked = '1';
+                      input.click();
+                    }
+                  }}
                   onChange={handleFileChange}
                   className="hidden"
                 />

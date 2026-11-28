@@ -28,6 +28,7 @@ import {
 import { useAuth } from '../../context/AuthContext.tsx';
 import { useToast } from '../../context/ToastContext.tsx';
 import { api } from '../../lib/api.ts';
+import { ensurePermissionForFeature } from '../../lib/permissionService.ts';
 import type {
   LostFoundItem,
   LostFoundClaim,
@@ -911,6 +912,19 @@ export const SchoolReportsPage: React.FC<SchoolReportsPageProps> = ({
                 <input
                   type="file"
                   accept="image/*"
+                  onClick={async (e) => {
+                    const input = e.currentTarget;
+                    if (input.dataset.permChecked === '1') {
+                      delete input.dataset.permChecked;
+                      return;
+                    }
+                    e.preventDefault();
+                    const allowed = await ensurePermissionForFeature('media', 'Unggah Foto Laporan');
+                    if (allowed) {
+                      input.dataset.permChecked = '1';
+                      input.click();
+                    }
+                  }}
                   onChange={(e) => handlePhotoUpload(e, setLfPhotoUrl)}
                   className="w-full text-xs file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-slate-100 file:text-slate-700 file:font-bold hover:file:bg-slate-200"
                 />

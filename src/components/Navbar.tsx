@@ -7,6 +7,7 @@ import {
   ScanLine,
   User as UserIcon,
   Shield,
+  ShieldCheck,
   School,
   Menu,
   X,
@@ -31,6 +32,7 @@ import {
   dismissNotificationPrompt,
   type NotificationPermissionState,
 } from '../lib/notificationService.ts';
+import { openPermissionManager } from '../lib/permissionService.ts';
 
 interface Props {
   currentTab?: string;
@@ -401,6 +403,16 @@ export const Navbar: React.FC<Props> = ({ currentTab = 'mapel', onNavigate }) =>
               </button>
             )}
 
+            {/* Tombol Izin Perangkat (Notifikasi, Kamera, Foto & Media) */}
+            <button
+              type="button"
+              onClick={() => openPermissionManager()}
+              className="relative p-2 rounded-xl text-slate-700 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 border border-slate-200 transition active:scale-95 shadow-xs cursor-pointer"
+              title="Pengaturan Izin Perangkat (Notifikasi, Kamera & Media)"
+            >
+              <ShieldCheck className="w-4 h-4 text-teal-700" />
+            </button>
+
             {/* Tombol Lonceng Notifikasi & Pusat Kontrol (Untuk Siswa, Guru, Admin, TU, Kepsek) */}
             <button
               type="button"
@@ -623,6 +635,17 @@ export const Navbar: React.FC<Props> = ({ currentTab = 'mapel', onNavigate }) =>
                 {unreadNotifCount}
               </span>
             )}
+          </button>
+
+          <button
+            onClick={() => {
+              openPermissionManager();
+              setMobileMenuOpen(false);
+            }}
+            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+          >
+            <ShieldCheck className="w-4 h-4 text-teal-600" />
+            <span>Izin Perangkat (Notifikasi, Kamera & Media)</span>
           </button>
 
           <button

@@ -12,7 +12,7 @@ import { SatpamDashboard } from './pages/satpam/SatpamDashboard.tsx';
 import { ScannerPage } from './pages/attendance/ScannerPage.tsx';
 import { PasswordChangeModal } from './components/PasswordChangeModal.tsx';
 import { WelcomeAnimation } from './components/WelcomeAnimation.tsx';
-import { NotificationPermissionModal } from './components/NotificationPermissionModal.tsx';
+import { AppPermissionModal } from './components/AppPermissionModal.tsx';
 import { InAppNotificationBanner } from './components/InAppNotificationBanner.tsx';
 import { startNotificationSync } from './lib/notificationService.ts';
 import { School } from 'lucide-react';
@@ -120,7 +120,7 @@ function AppContent() {
         <Login
           initialUsername={loginPrefillUsername}
         />
-        <NotificationPermissionModal />
+        <AppPermissionModal />
         <InAppNotificationBanner />
       </>
     );
@@ -198,8 +198,8 @@ function AppContent() {
         )}
       </main>
 
-      {/* Global Notification Permission Prompt */}
-      <NotificationPermissionModal />
+      {/* Global App Permission Manager & Onboarding */}
+      <AppPermissionModal />
 
       {/* Floating In-App Real-time Notification Banner */}
       <InAppNotificationBanner />

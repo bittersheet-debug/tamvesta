@@ -1,5 +1,10 @@
 import { api, offlineStore } from './api.ts';
 import { playNotificationChime } from './audio.ts';
+import {
+  requestAppPermission,
+  showAndroidNativeNotification,
+  isNativeAndroid,
+} from './permissionService.ts';
 import type { Announcement, AppNotification, StudentPost } from '../types/index.ts';
 
 const NOTIF_DISMISSED_KEY = 'tamvesta_notif_prompt_dismissed_until';
@@ -72,26 +77,22 @@ export function dismissNotificationPrompt(hours = 24): void {
 export async function requestNotificationPermission(): Promise<NotificationPermissionState> {
   if (typeof window === 'undefined') return 'unsupported';
 
-  let nativePerm: NotificationPermissionState = 'default';
+  // Gunakan sistem permission terpadu (Native Android Runtime di APK / Web API di browser)
+  const permResult = await requestAppPermission('notifications');
 
-  // 1. Jika Web Notification API didukung, minta izin native ke OS
-  try {
-    if ('Notification' in window && typeof Notification.requestPermission === 'function') {
-      nativePerm = await Notification.requestPermission();
-    }
-  } catch (err) {
-    console.warn('Native Notification.requestPermission error:', err);
-  }
-
-  // Jika pengguna secara spesifik memblokir di level OS
-  if (nativePerm === 'denied') {
+  if (permResult.status === 'denied') {
     try {
       localStorage.setItem('tamvesta_notif_permission', 'denied');
+      localStorage.setItem('tamvesta_notif_enabled', 'false');
     } catch (_) {}
     return 'denied';
   }
 
-  // 2. Aktifkan sistem notifikasi TAMVESTA (Suara denting, getar, in-app banner, dan push)
+  if (permResult.status !== 'granted') {
+    return 'default';
+  }
+
+  // Aktifkan sistem notifikasi TAMVESTA (Suara denting, getar, in-app banner, dan push)
   try {
     localStorage.setItem('tamvesta_notif_enabled', 'true');
     localStorage.setItem('tamvesta_notif_permission', 'granted');
@@ -105,7 +106,7 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
 
   // Kirim notifikasi sambutan ke perangkat
   sendNativeNotification('🔔 Notifikasi TAMVESTA Berhasil Aktif!', {
-    body: 'Anda sekarang akan menerima pengumuman sekolah, kuis, dan pesan resmi langsung di HP ini.',
+    body: 'Anda sekarang akan menerima pengumuman sekolah, kuis, pesan DM, dan info pembayaran di perangkat ini.',
     icon: '/assets/tamvesta_mascot.jpg',
     tag: 'tamvesta-welcome',
   });

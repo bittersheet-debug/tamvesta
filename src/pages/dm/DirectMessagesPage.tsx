@@ -29,6 +29,7 @@ import { useAuth } from '../../context/AuthContext.tsx';
 import { useToast } from '../../context/ToastContext.tsx';
 import { ConfirmDeleteModal } from '../../components/ConfirmDeleteModal.tsx';
 import { api } from '../../lib/api.ts';
+import { ensurePermissionForFeature } from '../../lib/permissionService.ts';
 import type { DirectMessage, DMConversation, StudentNote, User } from '../../types/index.ts';
 import { VerifiedBadge } from '../../components/VerifiedBadge.tsx';
 
@@ -1288,7 +1289,12 @@ export const DirectMessagesPage: React.FC<DirectMessagesPageProps> = ({
                 {/* Attachment Button */}
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={async () => {
+                    const allowed = await ensurePermissionForFeature('media', 'Kirim Foto & Media di DM');
+                    if (allowed) {
+                      fileInputRef.current?.click();
+                    }
+                  }}
                   className="w-9 h-9 sm:w-10 sm:h-10 text-slate-500 hover:text-emerald-600 hover:bg-slate-100 rounded-full flex items-center justify-center shrink-0 transition"
                   title="Lampirkan Foto atau Video"
                 >

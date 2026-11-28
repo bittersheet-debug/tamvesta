@@ -17,6 +17,7 @@ import {
 import { VerifiedBadge } from './VerifiedBadge.tsx';
 import { useAuth } from '../context/AuthContext.tsx';
 import { api } from '../lib/api.ts';
+import { ensurePermissionForFeature } from '../lib/permissionService.ts';
 import type { StudentPost } from '../types/index.ts';
 
 interface CreatePostModalProps {
@@ -307,7 +308,10 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                   {/* Photo Button */}
                   <button
                     type="button"
-                    onClick={() => photoInputRef.current?.click()}
+                    onClick={async () => {
+                      const allowed = await ensurePermissionForFeature('media', 'Unggah Foto Postingan');
+                      if (allowed) photoInputRef.current?.click();
+                    }}
                     className={`flex items-center justify-center gap-2 py-3 px-4 rounded-2xl border text-xs font-bold transition ${
                       mediaType === 'photo'
                         ? 'border-emerald-500 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-400/30'
@@ -321,7 +325,10 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                   {/* Video Button */}
                   <button
                     type="button"
-                    onClick={() => videoInputRef.current?.click()}
+                    onClick={async () => {
+                      const allowed = await ensurePermissionForFeature('media', 'Unggah Video Postingan');
+                      if (allowed) videoInputRef.current?.click();
+                    }}
                     className={`flex items-center justify-center gap-2 py-3 px-4 rounded-2xl border text-xs font-bold transition ${
                       mediaType === 'video'
                         ? 'border-cyan-500 bg-cyan-50 text-cyan-700 ring-2 ring-cyan-400/30'

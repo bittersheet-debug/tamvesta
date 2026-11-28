@@ -27,6 +27,7 @@ import {
 import type { PasswordResetRequest } from '../types/index.ts';
 import type { User } from '../types/index.ts';
 import { api, setStoredToken } from '../lib/api.ts';
+import { ensurePermissionForFeature } from '../lib/permissionService.ts';
 import { useAuth } from '../context/AuthContext.tsx';
 import { useToast } from '../context/ToastContext.tsx';
 import { ImageLightboxModal } from './ImageLightboxModal.tsx';
@@ -414,6 +415,19 @@ export const StudentProfileModal: React.FC<Props> = ({ user: initialUser, isOpen
                     <input
                       type="file"
                       accept="image/*"
+                      onClick={async (e) => {
+                        const input = e.currentTarget;
+                        if (input.dataset.permChecked === '1') {
+                          delete input.dataset.permChecked;
+                          return;
+                        }
+                        e.preventDefault();
+                        const allowed = await ensurePermissionForFeature('media', 'Ganti Foto Profil');
+                        if (allowed) {
+                          input.dataset.permChecked = '1';
+                          input.click();
+                        }
+                      }}
                       onChange={handlePhotoSelect}
                       className="hidden"
                     />

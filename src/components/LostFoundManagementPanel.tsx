@@ -24,6 +24,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { api } from '../lib/api.ts';
+import { ensurePermissionForFeature } from '../lib/permissionService.ts';
 import { useToast } from '../context/ToastContext.tsx';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal.tsx';
 import type {
@@ -760,6 +761,19 @@ export const LostFoundManagementPanel: React.FC<LostFoundManagementPanelProps> =
                     <input
                       type="file"
                       accept="image/*"
+                      onClick={async (e) => {
+                        const input = e.currentTarget;
+                        if (input.dataset.permChecked === '1') {
+                          delete input.dataset.permChecked;
+                          return;
+                        }
+                        e.preventDefault();
+                        const allowed = await ensurePermissionForFeature('media', 'Unggah Foto Barang');
+                        if (allowed) {
+                          input.dataset.permChecked = '1';
+                          input.click();
+                        }
+                      }}
                       onChange={handlePhotoUpload}
                       className="hidden"
                     />
