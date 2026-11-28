@@ -373,7 +373,9 @@
       "isOfficial": true,
       "isCustom": true,
       "source": "admin",
-      "isDemo": false
+      "isDemo": false,
+      "isVerified": true,
+      "badgeType": "blue"
     }
   ],
   "subjects": [],
@@ -399,23 +401,6 @@
   "attendanceRecords": [],
   "passwordResetRequests": [
     {
-      "id": "pr_1795842055353",
-      "ticketNumber": "TKT-302331",
-      "userId": "stu_1795839550817_nsfxm",
-      "username": "kimel",
-      "name": "Alvaro Pratama Herlen",
-      "kelas": "Kelas 8",
-      "role": "siswa",
-      "reason": "Pengajuan ganti sandi berkala",
-      "status": "approved",
-      "newPasswordHash": "pbkdf2v2$e7e613e2cec9fe62062f973c63b9efbfc38b05511d00e5d987904e2ce680cf263720b03a8bca9fe26498a9aa8ffbb8d8fa5fefc56699f666507228e6f6f78830",
-      "newSalt": "347f7a5b2ca2854c6dde822c6c71f6dd",
-      "createdAt": "2026-11-28T05:00:55.353Z",
-      "adminNote": "Telah Disetujui",
-      "processedAt": "2026-11-28T05:01:03.854Z",
-      "processedBy": "Administrator Tamansiswa Batam"
-    },
-    {
       "id": "pr_1793377899590",
       "ticketNumber": "TKT-994704",
       "userId": "stu_1793373992097_jv1v1",
@@ -432,6 +417,23 @@
       "processedAt": "2026-10-30T16:56:17.016Z",
       "processedBy": "Administrator Tamansiswa Batam",
       "adminNote": "Telah Disetujui"
+    },
+    {
+      "id": "pr_1795842055353",
+      "ticketNumber": "TKT-302331",
+      "userId": "stu_1795839550817_nsfxm",
+      "username": "kimel",
+      "name": "Alvaro Pratama Herlen",
+      "kelas": "Kelas 8",
+      "role": "siswa",
+      "reason": "Pengajuan ganti sandi berkala",
+      "status": "approved",
+      "newPasswordHash": "pbkdf2v2$e7e613e2cec9fe62062f973c63b9efbfc38b05511d00e5d987904e2ce680cf263720b03a8bca9fe26498a9aa8ffbb8d8fa5fefc56699f666507228e6f6f78830",
+      "newSalt": "347f7a5b2ca2854c6dde822c6c71f6dd",
+      "createdAt": "2026-11-28T05:00:55.353Z",
+      "adminNote": "Telah Disetujui",
+      "processedAt": "2026-11-28T05:01:03.854Z",
+      "processedBy": "Administrator Tamansiswa Batam"
     },
     {
       "id": "pr_1793379084239",
@@ -693,16 +695,6 @@
   "gameRooms": [],
   "refreshSignals": [
     {
-      "id": "sig_1795866980375_8eiu",
-      "userId": "user_admin_tamansiswa",
-      "userName": "Administrator Tamansiswa Batam",
-      "userUsername": "TAMANSISWA",
-      "userKelas": "-",
-      "timestamp": "2026-11-28T11:56:20.349Z",
-      "formattedTime": "11.56.20 WIB",
-      "status": "received"
-    },
-    {
       "id": "sig_1794044519462_c63l",
       "userKelas": "-",
       "timestamp": "2026-11-07T09:41:59.462Z",
@@ -960,5 +952,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 456
+  "syncVersion": 460
 }
