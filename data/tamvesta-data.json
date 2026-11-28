@@ -400,6 +400,50 @@
       "source": "admin",
       "isDemo": false,
       "isVerified": true
+    },
+    {
+      "id": "stu_1793384638396_vxd3b",
+      "username": "key",
+      "name": "Kheisya Nachua Billa",
+      "role": "siswa",
+      "gender": "Perempuan",
+      "kelas": "Kelas 9",
+      "initialPassword": "123456",
+      "password": "123456",
+      "passwordHash": "404c06180ed54bcfcd3ddce181f0a16a02695e2c12a1fceccd150be2f235ab4926a7b82d0b08630bf970a118d5380a695493cb6715e9a8967391b3b45f414a53",
+      "salt": "99840d995c8357114413a18d4e2e8dd0",
+      "mustChangePassword": false,
+      "isActive": true,
+      "qrToken": "TAMVESTA:STUDENT:stu_1793384638396_vxd3b:400314a3d6cf6e60",
+      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Kheisya%20Nachua%20Billa&backgroundColor=0284c7",
+      "createdAt": "2026-10-30T18:23:58.396Z",
+      "updatedAt": "2026-10-31T07:57:50.805Z",
+      "isOfficial": true,
+      "isCustom": true,
+      "source": "admin",
+      "isDemo": false
+    },
+    {
+      "id": "stu_1795839550817_nsfxm",
+      "username": "kimel",
+      "name": "Alvaro Pratama Herlen",
+      "role": "siswa",
+      "gender": "Laki-laki",
+      "kelas": "Kelas 8",
+      "initialPassword": "123456",
+      "password": "123456",
+      "passwordHash": "2b6546ea7fe1dde0674fca72f1cb6bdfb91db364d4b927c38d9a86399723c01646b03cbff4c0af2455ce34e457dc5501c2ea512a3732de0145ac4bf2aeac310b",
+      "salt": "f8b049b1f58d596da2280b1203ccd2c2",
+      "mustChangePassword": false,
+      "isActive": true,
+      "qrToken": "TAMVESTA:STUDENT:stu_1795839550817_nsfxm:5aa97099d5d26da4",
+      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Alvaro%20Pratama%20Herlen&backgroundColor=0284c7",
+      "createdAt": "2026-11-28T04:19:10.817Z",
+      "updatedAt": "2026-11-28T04:19:10.817Z",
+      "isOfficial": true,
+      "isCustom": true,
+      "source": "admin",
+      "isDemo": false
     }
   ],
   "subjects": [],
@@ -555,6 +599,16 @@
   "gameRooms": [],
   "refreshSignals": [
     {
+      "id": "sig_1795839550854_m07q",
+      "userId": "stu_1795839550817_nsfxm",
+      "userName": "Alvaro Pratama Herlen",
+      "userUsername": "kimel",
+      "userKelas": "Kelas 8",
+      "timestamp": "2026-11-28T04:19:10.827Z",
+      "formattedTime": "04.19.10 WIB",
+      "status": "received"
+    },
+    {
       "id": "sig_1794044519462_c63l",
       "userKelas": "-",
       "timestamp": "2026-11-07T09:41:59.462Z",
@@ -612,10 +666,9 @@
     "guru.matematika",
     "guru.bahasa",
     "kepala.sekolah",
-    "panitia.osis",
-    "stu_1793384638396_vxd3b",
-    "key"
+    "panitia.osis"
   ],
+  "schedules": [],
   "schoolClasses": [
     {
       "id": "class_7a",
@@ -665,6 +718,5 @@
       "createdAt": "2026-11-28T04:18:00.497Z",
       "updatedAt": "2026-11-28T04:18:00.497Z"
     }
-  ],
-  "schedules": []
+  ]
 }
