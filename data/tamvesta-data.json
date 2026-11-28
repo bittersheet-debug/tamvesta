@@ -62,7 +62,9 @@
       "qrToken": "TAMVESTA:STUDENT:user_staff_margaretha_h:a28a934b97b88142",
       "createdAt": "2026-10-24T08:22:46.854Z",
       "updatedAt": "2026-10-24T08:22:46.854Z",
-      "tokenVersion": 0
+      "tokenVersion": 0,
+      "isVerified": true,
+      "badgeType": "blue"
     },
     {
       "id": "user_staff_bambang_operator",
@@ -866,5 +868,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 191
+  "syncVersion": 194
 }
