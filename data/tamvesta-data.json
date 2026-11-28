@@ -398,7 +398,8 @@
       "isCustom": true,
       "source": "admin",
       "isDemo": false,
-      "isVerified": false
+      "isVerified": true,
+      "badgeType": "blue"
     }
   ],
   "subjects": [],
@@ -681,7 +682,7 @@
   "deletedNoteIds": [],
   "deletedBillIds": [],
   "deletedDocumentIds": [],
-  "hasSeededDefaultClasses": false,
+  "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 6
+  "syncVersion": 16
 }
