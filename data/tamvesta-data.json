@@ -540,6 +540,19 @@
   "notes": [],
   "notifications": [
     {
+      "id": "notif_1795842266598_2v5hg",
+      "title": "Tanggapan Support TAMVESTA",
+      "message": "Tim Support TAMVESTA menanggapi laporan \"Aplikasi Tidak Bisa\": oke",
+      "type": "app_report",
+      "isImportant": false,
+      "linkType": "reports",
+      "linkId": "rep_1795842238635_si06",
+      "targetUserId": "stu_1795839550817_nsfxm",
+      "readBy": [],
+      "deletedBy": [],
+      "createdAt": "2026-11-28T05:04:26.598Z"
+    },
+    {
       "id": "notif_1795842238638_a88a3",
       "title": "Tiket Kendala Teknis TAMVESTA",
       "message": "Alvaro Pratama Herlen melaporkan: \"Aplikasi Tidak Bisa\" (error_bug).",
@@ -715,10 +728,15 @@
       "title": "Aplikasi Tidak Bisa",
       "description": "Hsjznznz",
       "incidentTime": "2026-11-28T05:03:56.935Z",
-      "status": "laporan_diterima",
+      "status": "sedang_ditangani",
       "targetHandler": "support",
       "createdAt": "2026-11-28T05:03:58.635Z",
-      "updatedAt": "2026-11-28T05:03:58.635Z"
+      "updatedAt": "2026-11-28T05:04:26.595Z",
+      "supportResponse": {
+        "respondedBy": "Administrator Tamansiswa Batam",
+        "technicalNotes": "oke",
+        "respondedAt": "2026-11-28T05:04:26.595Z"
+      }
     }
   ],
   "schedules": [],
@@ -844,5 +862,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 165
+  "syncVersion": 180
 }
