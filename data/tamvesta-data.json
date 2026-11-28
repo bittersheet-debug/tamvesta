@@ -618,6 +618,16 @@
   "gameRooms": [],
   "refreshSignals": [
     {
+      "id": "sig_1795842067034_zpki",
+      "userId": "user_admin_tamansiswa",
+      "userName": "Administrator Tamansiswa Batam",
+      "userUsername": "TAMANSISWA",
+      "userKelas": "-",
+      "timestamp": "2026-11-28T05:01:07.034Z",
+      "formattedTime": "05.01.07 WIB",
+      "status": "received"
+    },
+    {
       "id": "sig_1795842063885_2j1o",
       "userId": "stu_1795839550817_nsfxm",
       "userName": "Alvaro Pratama Herlen",
@@ -771,5 +781,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 90
+  "syncVersion": 93
 }
