@@ -669,8 +669,8 @@
       "username": "kimel",
       "userName": "Alvaro Pratama Herlen",
       "userRole": "siswa",
-      "id": "sess_1795842078480_0m7d",
-      "lastActive": "2026-11-28T05:01:18.480Z",
+      "id": "sess_1795842099582_sndg",
+      "lastActive": "2026-11-28T05:01:39.582Z",
       "createdAt": "2026-11-28T04:55:58.416Z"
     }
   ],
@@ -781,5 +781,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 97
+  "syncVersion": 105
 }
