@@ -554,6 +554,18 @@
   "notes": [],
   "notifications": [
     {
+      "id": "notif_1795849281950_kf5di",
+      "title": "Selamat Datang di TAMVESTA Mobile!",
+      "message": "Aplikasi resmi siswa Tamansiswa Batam kini aktif dengan fitur Feed, Story, QR, Arsip, dan Quiz.",
+      "type": "announcement",
+      "isImportant": false,
+      "linkType": "announcement",
+      "targetRole": "siswa",
+      "readBy": [],
+      "deletedBy": [],
+      "createdAt": "2026-11-28T07:01:21.950Z"
+    },
+    {
       "id": "notif_1795842266598_2v5hg",
       "title": "Tanggapan Support TAMVESTA",
       "message": "Tim Support TAMVESTA menanggapi laporan \"Aplikasi Tidak Bisa\": oke",
@@ -632,6 +644,16 @@
   "tuMonthlyReports": [],
   "gameRooms": [],
   "refreshSignals": [
+    {
+      "id": "sig_1795849281980_ahpq",
+      "userId": "user_admin_tamansiswa",
+      "userName": "Administrator Tamansiswa Batam",
+      "userUsername": "TAMANSISWA",
+      "userKelas": "Notif ke siswa",
+      "timestamp": "2026-11-28T07:01:21.953Z",
+      "formattedTime": "07.01.21 WIB",
+      "status": "received"
+    },
     {
       "id": "sig_1794044519462_c63l",
       "userKelas": "-",
@@ -841,5 +863,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 313
+  "syncVersion": 323
 }
