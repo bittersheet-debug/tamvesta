@@ -567,18 +567,6 @@
       "createdAt": "2026-11-28T05:04:26.598Z"
     },
     {
-      "id": "notif_1795842055353_zhxzc",
-      "title": "Pengajuan Ganti Sandi Baru",
-      "message": "Alvaro Pratama Herlen (Kelas 8) mengajukan ganti sandi (Tiket: TKT-302331).",
-      "type": "security",
-      "isImportant": false,
-      "linkType": "none",
-      "targetRole": "admin",
-      "readBy": [],
-      "deletedBy": [],
-      "createdAt": "2026-11-28T05:00:55.353Z"
-    },
-    {
       "id": "notif_1794044519451_8fhlo",
       "title": "✅ Pendaftaran Siswa Di-ACC",
       "message": "Pendaftaran akun siswa Siswa Percobaan PPDB (@test.siswa.1794044519232) telah disetujui (ACC) oleh Admin Penguji. Akun kini aktif.",
@@ -843,7 +831,8 @@
   "deletedNotificationIds": [
     "notif_1795842191506_u0z4b",
     "notif_1795842238638_a88a3",
-    "notif_1795842063854_shsjm"
+    "notif_1795842063854_shsjm",
+    "notif_1795842055353_zhxzc"
   ],
   "deletedArticleIds": [],
   "deletedEventIds": [],
@@ -852,5 +841,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 311
+  "syncVersion": 313
 }
