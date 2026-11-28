@@ -275,8 +275,8 @@
       "name": "Masni",
       "role": "guru",
       "jabatan": "Guru",
-      "passwordHash": "af1d5c60471cddf868156a94fe23ed30de4470a13a1b83c84db0217a7a0d97aa791fa9c3b942231f7b39b8d65ae05e3e90148acb713f81369389f9defbf69acd",
-      "salt": "b74aef0906e42c7ddab2bdb6f4545256",
+      "passwordHash": "pbkdf2v2$f732c5fb6386bc1f539ff2242f19b52bfba8bd479beed5bf41228e8ba58ecd30a52116c3ef4bb0fad47e2769a582052e6589d57caa4000011b10ee0c2fe02212",
+      "salt": "4bdd217d3ec047e088f50ca076f48805",
       "mustChangePassword": false,
       "isActive": true,
       "qrToken": "TAMVESTA:STUDENT:user_staff_masni:5c6b1af87cca3d50",
@@ -679,36 +679,6 @@
   "gameRooms": [],
   "refreshSignals": [
     {
-      "id": "sig_1795842191509_p1q5",
-      "userId": "user_admin_tamansiswa",
-      "userName": "Administrator Tamansiswa Batam",
-      "userUsername": "TAMANSISWA",
-      "userKelas": "Notif ke siswa",
-      "timestamp": "2026-11-28T05:03:11.508Z",
-      "formattedTime": "05.03.11 WIB",
-      "status": "received"
-    },
-    {
-      "id": "sig_1795842067034_zpki",
-      "userId": "user_admin_tamansiswa",
-      "userName": "Administrator Tamansiswa Batam",
-      "userUsername": "TAMANSISWA",
-      "userKelas": "-",
-      "timestamp": "2026-11-28T05:01:07.034Z",
-      "formattedTime": "05.01.07 WIB",
-      "status": "received"
-    },
-    {
-      "id": "sig_1795842063885_2j1o",
-      "userId": "stu_1795839550817_nsfxm",
-      "userName": "Alvaro Pratama Herlen",
-      "userUsername": "kimel",
-      "userKelas": "-",
-      "timestamp": "2026-11-28T05:01:03.858Z",
-      "formattedTime": "05.01.03 WIB",
-      "status": "received"
-    },
-    {
       "id": "sig_1794044519462_c63l",
       "userKelas": "-",
       "timestamp": "2026-11-07T09:41:59.462Z",
@@ -899,5 +869,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 227
+  "syncVersion": 244
 }
