@@ -6,8 +6,8 @@
       "name": "Administrator Tamansiswa Batam",
       "role": "admin",
       "jabatan": "Administrator Utama TAMVESTA",
-      "passwordHash": "c3fd9268242c7c3edc30bcc8fc15494e62c5503824a70990805843e074db67db54cb26d5e71839cd09b8ae6f569b6eaa301ff8a40380340b16684b1edb2dfd18",
-      "salt": "5c6042ce06e533d8a2e3b377ba529e75",
+      "passwordHash": "pbkdf2v2$5014e81c62a8d2c5c2364b98ac75deb39d0f27f63da6f4fc84fcced7e364e2e65d722c982d679c28fd930628bddba01970b2154350f8f03d7a9ba540ad4564c8",
+      "salt": "d94737455c024f741f5ee6c12feadffe",
       "mustChangePassword": false,
       "isActive": true,
       "qrToken": "TAMVESTA:STUDENT:user_admin_tamansiswa:785efa956b468c8f",
@@ -818,5 +818,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 392
+  "syncVersion": 408
 }
