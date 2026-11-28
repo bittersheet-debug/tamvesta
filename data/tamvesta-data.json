@@ -328,30 +328,6 @@
       "tokenVersion": 0
     },
     {
-      "id": "stu_1793377010945_uzghx",
-      "username": "siswa.rian.resmi",
-      "name": "Rian Pratama",
-      "role": "siswa",
-      "gender": "Laki-laki",
-      "kelas": "Kelas 7",
-      "passwordHash": "72b22dbf2916c98ddd64c3a03c64ff37dee932397c458d61858155176b0343e6eb04ae4bba89f4034ef08b2076f0c0cfa1c57c458d3c4b901607d0f533063ac5",
-      "salt": "8f3fa1fe2719f8b4f4fc6e37af3c6530",
-      "mustChangePassword": false,
-      "isActive": true,
-      "qrToken": "TAMVESTA:STUDENT:stu_1793377010945_uzghx:50e2cbb5a801b0d6",
-      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Rian%20Pratama&backgroundColor=0284c7",
-      "createdAt": "2026-10-30T16:16:50.945Z",
-      "updatedAt": "2026-10-30T17:10:19.141Z",
-      "isOfficial": true,
-      "isCustom": true,
-      "source": "admin",
-      "isDemo": false,
-      "passwordChanged": true,
-      "phone": "494646499",
-      "email": "sjkslsksksnn@kimel.com",
-      "tokenVersion": 0
-    },
-    {
       "id": "stu_1793373992097_jv1v1",
       "username": "graniat",
       "name": "Alvaro Pratama Herlen",
@@ -455,24 +431,6 @@
       "processedAt": "2026-10-30T16:56:17.016Z",
       "processedBy": "Administrator Tamansiswa Batam",
       "adminNote": "Telah Disetujui"
-    },
-    {
-      "id": "pr_1793379084239",
-      "ticketNumber": "TKT-574403",
-      "userId": "stu_1793377010945_uzghx",
-      "username": "siswa.rian.resmi",
-      "name": "Rian Pratama",
-      "kelas": "Kelas 7",
-      "role": "siswa",
-      "reason": "Pengajuan ganti sandi berkala",
-      "status": "approved",
-      "newPasswordHash": "1a3a6c21e8783c7bad84e7156b2a6c9b935a2996c2eeab2d6abb764e388304204f4879511103e652a8320ee979b735c378c5a81a4cbe1ddf1d3ca39006901447",
-      "newSalt": "264d2c9588c3de3d98c10077b8c82422",
-      "newPassword": "passwordBaru789",
-      "createdAt": "2026-10-30T16:51:24.239Z",
-      "processedAt": "2026-10-30T16:56:16.713Z",
-      "processedBy": "Administrator Tamansiswa Batam",
-      "adminNote": "Telah Disetujui"
     }
   ],
   "posts": [
@@ -532,6 +490,35 @@
   "stories": [],
   "notes": [],
   "notifications": [
+    {
+      "id": "notif_1795866929710_vnkq4",
+      "title": "AKUN DIHAPUS PERMANEN",
+      "message": "Admin lain (Administrator Tamansiswa Batam) telah menghapus permanen akun Rian Pratama (@siswa.rian.resmi • Siswa) dari database TAMVESTA.",
+      "type": "admin_account_event",
+      "isImportant": true,
+      "linkType": "students",
+      "linkId": "stu_1793377010945_uzghx",
+      "targetRole": "admin",
+      "targetRoles": [
+        "admin"
+      ],
+      "excludeUserId": "user_admin_tamansiswa",
+      "excludeDeviceId": "dev_b85e8af9-04e8-45bc-8637-4e5e3eff251c",
+      "dedupeKey": "admin_acct:deleted:stu_1793377010945_uzghx:deleted_598622309",
+      "actorId": "user_admin_tamansiswa",
+      "actorName": "Administrator Tamansiswa Batam",
+      "statusLabel": "Status: Dihapus permanen.",
+      "metadata": {
+        "action": "deleted",
+        "targetUserId": "stu_1793377010945_uzghx",
+        "targetUsername": "siswa.rian.resmi",
+        "targetName": "Rian Pratama",
+        "targetRole": "siswa"
+      },
+      "readBy": [],
+      "deletedBy": [],
+      "createdAt": "2026-11-28T11:55:29.710Z"
+    },
     {
       "id": "notif_1795866922621_pl3s6",
       "title": "AKUN DIHAPUS PERMANEN",
@@ -677,19 +664,6 @@
       "os": "Android",
       "browser": "Chrome",
       "deviceName": "Android (Chrome)",
-      "userId": "user_admin_tamansiswa",
-      "username": "TAMANSISWA",
-      "userName": "Administrator Tamansiswa Batam",
-      "userRole": "admin",
-      "id": "sess_1795866901169_lq68",
-      "lastActive": "2026-11-28T11:55:01.168Z",
-      "createdAt": "2026-11-28T11:55:01.168Z"
-    },
-    {
-      "deviceType": "mobile",
-      "os": "Android",
-      "browser": "Chrome",
-      "deviceName": "Android (Chrome)",
       "userId": "stu_1795839550817_nsfxm",
       "username": "kimel",
       "userName": "Alvaro Pratama Herlen",
@@ -736,6 +710,19 @@
       "id": "sess_1795842414961_yshk",
       "lastActive": "2026-11-28T05:06:54.961Z",
       "createdAt": "2026-11-28T05:06:54.961Z"
+    },
+    {
+      "deviceType": "mobile",
+      "os": "Android",
+      "browser": "Chrome",
+      "deviceName": "Android (Chrome)",
+      "userId": "user_admin_tamansiswa",
+      "username": "TAMANSISWA",
+      "userName": "Administrator Tamansiswa Batam",
+      "userRole": "admin",
+      "id": "sess_1795866901169_lq68",
+      "lastActive": "2026-11-28T11:55:01.168Z",
+      "createdAt": "2026-11-28T11:55:01.168Z"
     }
   ],
   "schoolClasses": [
@@ -773,6 +760,16 @@
     }
   ],
   "activityLogs": [
+    {
+      "type": "account_deleted",
+      "title": "Penghapusan Akun Permanen",
+      "description": "Akun SISWA @siswa.rian.resmi (Rian Pratama) telah dihapus secara permanen dari database.",
+      "userId": "stu_1793377010945_uzghx",
+      "userName": "Rian Pratama",
+      "userRole": "siswa",
+      "id": "log_1795866929706_vy3g",
+      "timestamp": "2026-11-28T11:55:29.706Z"
+    },
     {
       "type": "account_deleted",
       "title": "Penghapusan Akun Permanen",
@@ -819,7 +816,9 @@
     "stu_1793384582080_7ddbl",
     "aldongker",
     "stu_1793384638396_vxd3b",
-    "key"
+    "key",
+    "stu_1793377010945_uzghx",
+    "siswa.rian.resmi"
   ],
   "deletedPostIds": [],
   "deletedStoryIds": [],
@@ -852,5 +851,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 422
+  "syncVersion": 428
 }
