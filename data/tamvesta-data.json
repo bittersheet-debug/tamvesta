@@ -369,13 +369,15 @@
       "qrToken": "TAMVESTA:STUDENT:stu_1795866977051_m9dt1:1fbd7916c3409dde",
       "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Valen%20Yudha%20Pratama&backgroundColor=0284c7",
       "createdAt": "2026-11-28T11:56:17.051Z",
-      "updatedAt": "2026-11-28T11:56:17.051Z",
+      "updatedAt": "2026-11-28T11:58:38.503Z",
       "isOfficial": true,
       "isCustom": true,
       "source": "admin",
       "isDemo": false,
       "isVerified": true,
-      "badgeType": "blue"
+      "badgeType": "blue",
+      "phone": "082172376541",
+      "email": "lendnew33@gmail.com"
     }
   ],
   "subjects": [],
@@ -401,23 +403,6 @@
   "attendanceRecords": [],
   "passwordResetRequests": [
     {
-      "id": "pr_1795842055353",
-      "ticketNumber": "TKT-302331",
-      "userId": "stu_1795839550817_nsfxm",
-      "username": "kimel",
-      "name": "Alvaro Pratama Herlen",
-      "kelas": "Kelas 8",
-      "role": "siswa",
-      "reason": "Pengajuan ganti sandi berkala",
-      "status": "approved",
-      "newPasswordHash": "pbkdf2v2$e7e613e2cec9fe62062f973c63b9efbfc38b05511d00e5d987904e2ce680cf263720b03a8bca9fe26498a9aa8ffbb8d8fa5fefc56699f666507228e6f6f78830",
-      "newSalt": "347f7a5b2ca2854c6dde822c6c71f6dd",
-      "createdAt": "2026-11-28T05:00:55.353Z",
-      "adminNote": "Telah Disetujui",
-      "processedAt": "2026-11-28T05:01:03.854Z",
-      "processedBy": "Administrator Tamansiswa Batam"
-    },
-    {
       "id": "pr_1793377899590",
       "ticketNumber": "TKT-994704",
       "userId": "stu_1793373992097_jv1v1",
@@ -434,6 +419,23 @@
       "processedAt": "2026-10-30T16:56:17.016Z",
       "processedBy": "Administrator Tamansiswa Batam",
       "adminNote": "Telah Disetujui"
+    },
+    {
+      "id": "pr_1795842055353",
+      "ticketNumber": "TKT-302331",
+      "userId": "stu_1795839550817_nsfxm",
+      "username": "kimel",
+      "name": "Alvaro Pratama Herlen",
+      "kelas": "Kelas 8",
+      "role": "siswa",
+      "reason": "Pengajuan ganti sandi berkala",
+      "status": "approved",
+      "newPasswordHash": "pbkdf2v2$e7e613e2cec9fe62062f973c63b9efbfc38b05511d00e5d987904e2ce680cf263720b03a8bca9fe26498a9aa8ffbb8d8fa5fefc56699f666507228e6f6f78830",
+      "newSalt": "347f7a5b2ca2854c6dde822c6c71f6dd",
+      "createdAt": "2026-11-28T05:00:55.353Z",
+      "adminNote": "Telah Disetujui",
+      "processedAt": "2026-11-28T05:01:03.854Z",
+      "processedBy": "Administrator Tamansiswa Batam"
     },
     {
       "id": "pr_1793379084239",
@@ -743,32 +745,6 @@
       "os": "Android",
       "browser": "Chrome",
       "deviceName": "Android (Chrome)",
-      "userId": "stu_1795866977051_m9dt1",
-      "username": "valenyp",
-      "userName": "Valen Yudha Pratama",
-      "userRole": "siswa",
-      "id": "sess_1795867088881_f20z",
-      "lastActive": "2026-11-28T11:58:08.881Z",
-      "createdAt": "2026-11-28T11:58:08.881Z"
-    },
-    {
-      "deviceType": "mobile",
-      "os": "Android",
-      "browser": "Chrome",
-      "deviceName": "Android (Chrome)",
-      "userId": "user_admin_tamansiswa",
-      "username": "TAMANSISWA",
-      "userName": "Administrator Tamansiswa Batam",
-      "userRole": "admin",
-      "id": "sess_1795866901169_lq68",
-      "lastActive": "2026-11-28T11:55:01.168Z",
-      "createdAt": "2026-11-28T11:55:01.168Z"
-    },
-    {
-      "deviceType": "mobile",
-      "os": "Android",
-      "browser": "Chrome",
-      "deviceName": "Android (Chrome)",
       "userId": "stu_1795839550817_nsfxm",
       "username": "kimel",
       "userName": "Alvaro Pratama Herlen",
@@ -815,6 +791,32 @@
       "id": "sess_1795842414961_yshk",
       "lastActive": "2026-11-28T05:06:54.961Z",
       "createdAt": "2026-11-28T05:06:54.961Z"
+    },
+    {
+      "deviceType": "mobile",
+      "os": "Android",
+      "browser": "Chrome",
+      "deviceName": "Android (Chrome)",
+      "userId": "user_admin_tamansiswa",
+      "username": "TAMANSISWA",
+      "userName": "Administrator Tamansiswa Batam",
+      "userRole": "admin",
+      "id": "sess_1795866901169_lq68",
+      "lastActive": "2026-11-28T11:55:01.168Z",
+      "createdAt": "2026-11-28T11:55:01.168Z"
+    },
+    {
+      "deviceType": "mobile",
+      "os": "Android",
+      "browser": "Chrome",
+      "deviceName": "Android (Chrome)",
+      "userId": "stu_1795866977051_m9dt1",
+      "username": "valenyp",
+      "userName": "Valen Yudha Pratama",
+      "userRole": "siswa",
+      "id": "sess_1795867088881_f20z",
+      "lastActive": "2026-11-28T11:58:08.881Z",
+      "createdAt": "2026-11-28T11:58:08.881Z"
     }
   ],
   "schoolClasses": [
@@ -965,5 +967,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 466
+  "syncVersion": 478
 }
