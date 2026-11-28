@@ -566,19 +566,6 @@
       "createdAt": "2026-11-28T07:01:21.950Z"
     },
     {
-      "id": "notif_1795842266598_2v5hg",
-      "title": "Tanggapan Support TAMVESTA",
-      "message": "Tim Support TAMVESTA menanggapi laporan \"Aplikasi Tidak Bisa\": oke",
-      "type": "app_report",
-      "isImportant": false,
-      "linkType": "reports",
-      "linkId": "rep_1795842238635_si06",
-      "targetUserId": "stu_1795839550817_nsfxm",
-      "readBy": [],
-      "deletedBy": [],
-      "createdAt": "2026-11-28T05:04:26.598Z"
-    },
-    {
       "id": "notif_1794044519265_sww7u",
       "title": "📋 Pendaftaran Siswa Baru (Menunggu ACC)",
       "message": "Calon siswa: Siswa Percobaan PPDB (REG-2026-16538) mendaftar untuk kelas Kelas 7. Menunggu verifikasi dan persetujuan (ACC).",
@@ -633,6 +620,16 @@
   "tuMonthlyReports": [],
   "gameRooms": [],
   "refreshSignals": [
+    {
+      "id": "sig_1795849281980_ahpq",
+      "userId": "user_admin_tamansiswa",
+      "userName": "Administrator Tamansiswa Batam",
+      "userUsername": "TAMANSISWA",
+      "userKelas": "Notif ke siswa",
+      "timestamp": "2026-11-28T07:01:21.953Z",
+      "formattedTime": "07.01.21 WIB",
+      "status": "received"
+    },
     {
       "id": "sig_1794044519462_c63l",
       "userKelas": "-",
@@ -834,7 +831,8 @@
     "notif_1795842238638_a88a3",
     "notif_1795842063854_shsjm",
     "notif_1795842055353_zhxzc",
-    "notif_1794044519451_8fhlo"
+    "notif_1794044519451_8fhlo",
+    "notif_1795842266598_2v5hg"
   ],
   "deletedArticleIds": [],
   "deletedEventIds": [],
@@ -843,5 +841,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 329
+  "syncVersion": 336
 }
