@@ -81,7 +81,7 @@ function extractDeviceId(req: Request): string | undefined {
   return q || undefined;
 }
 
-export function authMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export async function authMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const token = extractRequestToken(req);
   if (!token) {
     return res.status(401).json({ error: 'Sesi tidak valid. Harap login kembali.', code: 'NO_TOKEN' });
@@ -92,12 +92,18 @@ export function authMiddleware(req: AuthenticatedRequest, res: Response, next: N
     return res.status(401).json({ error: 'Token kadaluarsa atau tidak valid.', code: 'INVALID_TOKEN' });
   }
 
+  await db.ensureCloudReady();
+
   if (db.isUserDeleted(verified.userId)) {
     return res.status(401).json({ error: 'Akun Anda telah dihapus dari sistem. Harap hubungi Administrator.', code: 'SESSION_REVOKED' });
   }
 
-  const user = db.findUserById(verified.userId);
+  let user = db.findUserById(verified.userId);
   if (!user) {
+    await db.reloadFromGitHub(true).catch(() => {});
+    user = db.findUserById(verified.userId);
+  }
+  if (!user || db.isUserDeleted(verified.userId)) {
     return res.status(401).json({ error: 'Pengguna tidak ditemukan atau telah dihapus.', code: 'SESSION_REVOKED' });
   }
 

@@ -562,7 +562,11 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
         isActive: editTeacherForm.isActive,
         expectedUpdatedAt: editingTeacher.updatedAt,
       };
-      if (editTeacherForm.password && editTeacherForm.password.trim().length >= 6) {
+      if (editTeacherForm.password && editTeacherForm.password.trim().length > 0) {
+        if (editTeacherForm.password.trim().length < 3) {
+          showError('Validasi Gagal', 'Password baru minimal 3 karakter.');
+          return;
+        }
         payload.password = editTeacherForm.password.trim();
       }
       const res = await api.updateTeacher(editingTeacher.id, payload);
@@ -2286,15 +2290,15 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
                 {/* 5. Password */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    5. Password (Min. 6 Karakter) *
+                    5. Password (Min. 3 Karakter) *
                   </label>
                   <input
                     type="password"
                     value={newStudentPassword}
                     onChange={(e) => setNewStudentPassword(e.target.value)}
                     required
-                    minLength={6}
-                    placeholder="Masukkan password akun"
+                    minLength={3}
+                    placeholder="Masukkan password akun (boleh sama dgn username)"
                     className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
                   />
                 </div>
@@ -4261,14 +4265,14 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
             <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Password Baru Siswa (Min. 6 Karakter)
+                  Password Baru Siswa (Min. 3 Karakter)
                 </label>
                 <input
                   type="password"
                   value={resetNewPassword}
                   onChange={(e) => setResetNewPassword(e.target.value)}
                   required
-                  minLength={6}
+                  minLength={3}
                   placeholder="Masukkan password reset"
                   className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 font-medium"
                 />
@@ -5229,7 +5233,7 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Password Baru (Opsional, Min. 6 Karakter)</label>
+                <label className="block font-bold text-slate-700 mb-1">Password Baru (Opsional, Min. 3 Karakter)</label>
                 <input
                   type="password"
                   value={editTeacherForm.password}
@@ -5355,13 +5359,14 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Password Awal *</label>
+                  <label className="block font-bold text-slate-700 mb-1">Password Awal (Min. 3 Karakter) *</label>
                   <input
                     type="text"
                     required
+                    minLength={3}
                     value={newTeacherForm.password}
                     onChange={(e) => setNewTeacherForm({ ...newTeacherForm, password: e.target.value })}
-                    placeholder="Tamvesta!1234"
+                    placeholder="Password awal (boleh sama dgn username)"
                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-mono text-slate-900 font-bold"
                   />
                 </div>
@@ -5422,7 +5427,7 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Password Baru (Opsional, Min. 6 Karakter)</label>
+                <label className="block font-bold text-slate-700 mb-1">Password Baru (Opsional, Min. 3 Karakter)</label>
                 <input
                   type="password"
                   value={editTeacherForm.password}
@@ -5551,7 +5556,7 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Password Baru (Opsional, Min. 6 Karakter)</label>
+                <label className="block font-bold text-slate-700 mb-1">Password Baru (Opsional, Min. 3 Karakter)</label>
                 <input
                   type="password"
                   value={editTeacherForm.password}
@@ -5726,7 +5731,7 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Password Baru (Opsional, Min. 6 Karakter)</label>
+                <label className="block font-bold text-slate-700 mb-1">Password Baru (Opsional, Min. 3 Karakter)</label>
                 <input
                   type="password"
                   value={editTeacherForm.password}

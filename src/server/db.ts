@@ -512,11 +512,26 @@ class DatabaseManager {
   private realtimeBuffer: RealtimeEvent[] = [];
   private realtimeSeq = 0;
   private seenCloudAdminNotifIds = new Set<string>();
+  private initialCloudPromise: Promise<void> | null = null;
 
   constructor() {
     this.data = this.loadData();
     if (isGitHubCloudSyncEnabled()) {
-      this.loadFromGitHubAsync().catch(() => {});
+      this.initialCloudPromise = this.loadFromGitHubAsync()
+        .catch(() => {})
+        .finally(() => {
+          this.initialCloudPromise = null;
+        });
+    }
+  }
+
+  public async ensureCloudReady(): Promise<void> {
+    if (!isGitHubCloudSyncEnabled()) return;
+    if (this.initialCloudPromise) {
+      try { await this.initialCloudPromise; } catch (_) {}
+    }
+    if (this.lastGitHubLoadAt === 0) {
+      await this.reloadFromGitHub().catch(() => {});
     }
   }
 
@@ -765,6 +780,12 @@ class DatabaseManager {
           );
           if (!existing) {
             const cleaned = { ...ghUser };
+            const legacyPlain = (cleaned.password || cleaned.initialPassword || '').trim();
+            if (legacyPlain && (!cleaned.passwordHash || !cleaned.salt || !verifyPassword(legacyPlain, cleaned.passwordHash, cleaned.salt))) {
+              const upgraded = hashPassword(legacyPlain);
+              cleaned.passwordHash = upgraded.hash;
+              cleaned.salt = upgraded.salt;
+            }
             delete cleaned.password;
             delete cleaned.initialPassword;
             this.data.users.push(cleaned);
@@ -1894,8 +1915,8 @@ class DatabaseManager {
     if (!userData.name || !userData.name.trim()) {
       return { success: false, error: 'Nama lengkap siswa wajib diisi.' };
     }
-    if (!userData.password || userData.password.trim().length < 6) {
-      return { success: false, error: 'Password minimal 6 karakter demi keamanan akun.' };
+    if (!userData.password || userData.password.trim().length < 3) {
+      return { success: false, error: 'Password minimal 3 karakter.' };
     }
 
     // Check unique username
@@ -2158,7 +2179,10 @@ class DatabaseManager {
         user.tokenVersion = (user.tokenVersion ?? 0) + 1;
       }
     }
-    if (data.password && data.password.trim().length >= 6) {
+    if (data.password !== undefined && data.password.trim().length > 0) {
+      if (data.password.trim().length < 3) {
+        return { success: false, error: 'Password minimal 3 karakter.' };
+      }
       const hashed = hashPassword(data.password.trim());
       user.passwordHash = hashed.hash;
       user.salt = hashed.salt;
@@ -2191,8 +2215,8 @@ class DatabaseManager {
     if (!data.name || !data.name.trim()) {
       return { success: false, error: 'Nama lengkap wajib diisi.' };
     }
-    if (!data.password || data.password.trim().length < 6) {
-      return { success: false, error: 'Password minimal 6 karakter.' };
+    if (!data.password || data.password.trim().length < 3) {
+      return { success: false, error: 'Password minimal 3 karakter.' };
     }
     const role: UserRole = data.role || 'siswa';
     if (role === 'siswa') {
@@ -2292,8 +2316,8 @@ class DatabaseManager {
     if (user.username === 'TAMANSISWA') {
       return { success: false, error: 'Password Admin Utama TAMANSISWA dilindungi dan tidak dapat diubah.' };
     }
-    if (!newPassword || newPassword.trim().length < 6) {
-      return { success: false, error: 'Password baru minimal 6 karakter.' };
+    if (!newPassword || newPassword.trim().length < 3) {
+      return { success: false, error: 'Password baru minimal 3 karakter.' };
     }
     const cleanPass = newPassword.trim();
     const hashed = hashPassword(cleanPass);
@@ -4072,8 +4096,8 @@ class DatabaseManager {
     if (existing) throw new Error('Username guru sudah digunakan.');
 
     const rawPassword = data.password?.trim() || ('Tamvesta!G' + Math.floor(1000 + Math.random() * 9000));
-    if (rawPassword.length < 6) {
-      throw new Error('Password minimal 6 karakter.');
+    if (rawPassword.length < 3) {
+      throw new Error('Password minimal 3 karakter.');
     }
     const pass = hashPassword(rawPassword);
     const id = `user_teacher_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
@@ -4144,7 +4168,10 @@ class DatabaseManager {
         teacher.tokenVersion = (teacher.tokenVersion ?? 0) + 1;
       }
     }
-    if (data.password && data.password.trim().length >= 6) {
+    if (data.password !== undefined && data.password.trim().length > 0) {
+      if (data.password.trim().length < 3) {
+        throw new Error('Password baru minimal 3 karakter.');
+      }
       const pass = hashPassword(data.password.trim());
       teacher.passwordHash = pass.hash;
       teacher.salt = pass.salt;
@@ -5269,8 +5296,8 @@ class DatabaseManager {
     if (existing) throw new Error(`Username @${cleanU} sudah digunakan.`);
 
     const rawPassword = data.password?.trim() || ('Tamvesta!' + Math.floor(1000 + Math.random() * 9000));
-    if (rawPassword.length < 6) {
-      throw new Error('Password minimal 6 karakter.');
+    if (rawPassword.length < 3) {
+      throw new Error('Password minimal 3 karakter.');
     }
     const pass = hashPassword(rawPassword);
     const id = `user_staff_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;

@@ -592,8 +592,8 @@ export const api = {
 
   createStudent: async (studentData: Partial<User> & { password?: string }) => {
     const rawPass = (studentData.password || '').trim();
-    if (!rawPass || rawPass.length < 6) {
-      throw new Error('Password wajib diisi minimal 6 karakter.');
+    if (!rawPass || rawPass.length < 3) {
+      throw new Error('Password wajib diisi minimal 3 karakter.');
     }
     const res = await tryServerRequest<{ message: string; student: User }>('/api/admin/students', {
       method: 'POST',

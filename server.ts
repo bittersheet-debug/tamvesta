@@ -441,18 +441,14 @@ app.post('/api/auth/login', async (req, res) => {
   const cleanUsername = rawUsername.toLowerCase().replace(/^@+/, '');
   const rawPassword = String(password).trim();
 
+  // Ensure multi-lambda Vercel deployments always load the latest GitHub DB snapshot before login checks
+  await db.reloadFromGitHub(true).catch(() => {});
+
   if (db.isUserDeleted(cleanUsername)) {
     return res.status(401).json({ error: 'Akun ini telah dihapus dari sistem oleh Administrator.' });
   }
 
-  let user = db.findUserByUsername(cleanUsername) || db.findUserByUsername(rawUsername);
-
-  if (!user) {
-    try {
-      await db.reloadFromGitHub();
-      user = db.findUserByUsername(cleanUsername) || db.findUserByUsername(rawUsername);
-    } catch (_) {}
-  }
+  const user = db.findUserByUsername(cleanUsername) || db.findUserByUsername(rawUsername);
 
   if (!user) {
     return res.status(401).json({ error: 'Username atau password tidak terdaftar di sistem TAMVESTA.' });
@@ -754,6 +750,7 @@ app.get('/api/admin/users', authMiddleware, requireRole(['admin', 'kepala_sekola
 });
 
 app.post('/api/admin/users', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
+  await db.reloadFromGitHub(true).catch(() => {});
   const { name, username, password, role, gender, kelas, jabatan, email, phone, isActive } = req.body;
   const result = db.createUserByAdmin({
     name,
@@ -801,6 +798,7 @@ app.post('/api/admin/users', authMiddleware, requireRole(['admin']), async (req:
 });
 
 app.put('/api/admin/users/:id', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
+  await db.reloadFromGitHub(true).catch(() => {});
   const { id } = req.params;
   const result = db.updateStudent(id, req.body);
   if (!result.success || !result.user) {
@@ -818,6 +816,7 @@ app.put('/api/admin/users/:id', authMiddleware, requireRole(['admin']), async (r
 });
 
 app.patch('/api/admin/users/:id/toggle-active', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
+  await db.reloadFromGitHub(true).catch(() => {});
   const { id } = req.params;
   const result = db.toggleUserActive(id);
   if (!result.success || !result.user) {
@@ -839,6 +838,7 @@ app.patch('/api/admin/users/:id/toggle-active', authMiddleware, requireRole(['ad
 });
 
 app.delete('/api/admin/users/:id', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
+  await db.reloadFromGitHub(true).catch(() => {});
   const { id } = req.params;
   try {
     const removal = db.deleteUserAccount(id);
@@ -860,6 +860,7 @@ app.delete('/api/admin/users/:id', authMiddleware, requireRole(['admin']), async
 });
 
 app.post('/api/admin/students', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
+  await db.reloadFromGitHub(true).catch(() => {});
   const { name, username, password, gender, kelas, nisn, phone, email } = req.body;
   const result = db.createStudent({ name, username, password, gender, kelas, nisn, phone, email });
 
@@ -898,6 +899,7 @@ app.post('/api/admin/students', authMiddleware, requireRole(['admin']), async (r
 
 // PATCH /api/admin/students/:id/toggle-active
 app.patch('/api/admin/students/:id/toggle-active', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
+  await db.reloadFromGitHub(true).catch(() => {});
   const { id } = req.params;
   const result = db.toggleUserActive(id);
   if (!result.success) {
@@ -923,6 +925,7 @@ app.patch('/api/admin/students/:id/toggle-active', authMiddleware, requireRole([
 
 // POST /api/admin/registrations/:id/approve (ACC Pendaftaran Siswa oleh Admin atau TU)
 app.post('/api/admin/registrations/:id/approve', authMiddleware, requireRole(['admin', 'tata_usaha']), async (req: AuthenticatedRequest, res) => {
+  await db.reloadFromGitHub(true).catch(() => {});
   const { id } = req.params;
   const approverName = req.user?.name || (req.user?.role === 'tata_usaha' ? 'Tata Usaha' : 'Administrator');
   const result = db.approveRegistration(id, approverName);
@@ -962,6 +965,7 @@ app.post('/api/admin/registrations/:id/approve', authMiddleware, requireRole(['a
 
 // POST /api/admin/registrations/:id/reject (Tolak Pendaftaran Siswa)
 app.post('/api/admin/registrations/:id/reject', authMiddleware, requireRole(['admin', 'tata_usaha']), async (req: AuthenticatedRequest, res) => {
+  await db.reloadFromGitHub(true).catch(() => {});
   const { id } = req.params;
   const result = db.rejectRegistration(id);
   if (!result.success) {
@@ -979,6 +983,7 @@ app.post('/api/admin/registrations/:id/reject', authMiddleware, requireRole(['ad
 
 // PUT /api/admin/students/:id
 app.put('/api/admin/students/:id', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
+  await db.reloadFromGitHub(true).catch(() => {});
   const { id } = req.params;
   const { name, gender, kelas, username, phone, email, bio, isActive, password, role, jabatan, expectedUpdatedAt } = req.body;
   const result = db.updateStudent(id, { name, gender, kelas, username, phone, email, bio, isActive, password, role, jabatan, expectedUpdatedAt });
@@ -1001,6 +1006,7 @@ app.put('/api/admin/students/:id', authMiddleware, requireRole(['admin']), async
 });
 
 app.delete('/api/admin/students/:id', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
+  await db.reloadFromGitHub(true).catch(() => {});
   const { id } = req.params;
   try {
     const removal = db.deleteUserAccount(id);
@@ -1025,6 +1031,7 @@ app.delete('/api/admin/students/:id', authMiddleware, requireRole(['admin']), as
 
 // POST /api/admin/students/:id/reset-password
 app.post('/api/admin/students/:id/reset-password', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
+  await db.reloadFromGitHub(true).catch(() => {});
   const { id } = req.params;
   const { newPassword } = req.body;
   const result = db.resetUserPassword(id, newPassword);
@@ -1043,13 +1050,15 @@ app.post('/api/admin/students/:id/reset-password', authMiddleware, requireRole([
 // -------------------------------------------------------------
 
 // GET /api/admin/staff (Admin & Kepala Sekolah)
-app.get('/api/admin/staff', authMiddleware, requireRole(['admin', 'kepala_sekolah']), (req, res) => {
+app.get('/api/admin/staff', authMiddleware, requireRole(['admin', 'kepala_sekolah']), async (req, res) => {
+  await db.reloadFromGitHub(true).catch(() => {});
   const staff = db.getStaffUsers();
   return res.json(staff.map(sanitizeUser));
 });
 
 // POST /api/admin/staff/:id/reset-initial (Kembalikan ke Password Awal Dokumen)
 app.post('/api/admin/staff/:id/reset-initial', authMiddleware, requireRole(['admin']), async (req, res) => {
+  await db.reloadFromGitHub(true).catch(() => {});
   const { id } = req.params;
   const result = db.resetStaffPasswordToInitial(id);
   if (!result.success) {
@@ -2469,6 +2478,7 @@ app.post('/api/tu/monthly-reports', authMiddleware, requireRole(['admin', 'tata_
 // -------------------------------------------------------------
 app.post('/api/admin/teachers', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   try {
+    await db.reloadFromGitHub(true).catch(() => {});
     const teacher = db.createTeacherAccount(req.body);
     db.notifyAdminsAccountActivity({
       action: 'created',
@@ -2490,6 +2500,7 @@ app.post('/api/admin/teachers', authMiddleware, requireRole(['admin']), async (r
 // Pembuatan Akun Staf/Administrasi Antarperangkat
 app.post('/api/admin/staff', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   try {
+    await db.reloadFromGitHub(true).catch(() => {});
     const staff = db.createStaffAccount(req.body);
     db.notifyAdminsAccountActivity({
       action: 'created',
@@ -2514,6 +2525,7 @@ app.post('/api/admin/staff', authMiddleware, requireRole(['admin']), async (req:
 
 app.put('/api/admin/teachers/:id', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   try {
+    await db.reloadFromGitHub(true).catch(() => {});
     const teacher = db.updateTeacherAccount(req.params.id, req.body);
     db.notifyAdminsAccountActivity({
       action: 'updated',
@@ -2534,6 +2546,7 @@ app.put('/api/admin/teachers/:id', authMiddleware, requireRole(['admin']), async
 
 app.delete('/api/admin/teachers/:id', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   try {
+    await db.reloadFromGitHub(true).catch(() => {});
     const removal = db.deleteUserAccount(req.params.id);
     if (!removal.deleted) return res.status(404).json({ error: 'Akun guru tidak ditemukan' });
     if (removal.removedUser) {

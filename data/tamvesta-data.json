@@ -631,5 +631,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": false,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 2
+  "syncVersion": 3
 }
