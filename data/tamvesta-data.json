@@ -351,10 +351,7 @@
       "phone": "0895410591097",
       "email": "paro.pratama.herlenn@gmail.com",
       "passwordChanged": true,
-      "tokenVersion": 1,
-      "following": [
-        "stu_1795866977051_m9dt1"
-      ]
+      "tokenVersion": 1
     },
     {
       "id": "stu_1795866977051_m9dt1",
@@ -713,6 +710,16 @@
   "gameRooms": [],
   "refreshSignals": [
     {
+      "id": "sig_1795867337397_z7k5",
+      "userId": "stu_1795839550817_nsfxm",
+      "userName": "Alvaro Pratama Herlen",
+      "userUsername": "kimel",
+      "userKelas": "Kelas 8",
+      "timestamp": "2026-11-28T12:02:17.370Z",
+      "formattedTime": "12.02.17 WIB",
+      "status": "received"
+    },
+    {
       "id": "sig_1794044519462_c63l",
       "userKelas": "-",
       "timestamp": "2026-11-07T09:41:59.462Z",
@@ -791,8 +798,8 @@
       "username": "kimel",
       "userName": "Alvaro Pratama Herlen",
       "userRole": "siswa",
-      "id": "sess_1795867281540_pyuh",
-      "lastActive": "2026-11-28T12:01:21.540Z",
+      "id": "sess_1795849182226_z7xi",
+      "lastActive": "2026-11-28T06:59:42.226Z",
       "createdAt": "2026-11-28T04:55:58.416Z"
     },
     {
@@ -833,6 +840,19 @@
       "id": "sess_1795842414961_yshk",
       "lastActive": "2026-11-28T05:06:54.961Z",
       "createdAt": "2026-11-28T05:06:54.961Z"
+    },
+    {
+      "deviceType": "mobile",
+      "os": "Android",
+      "browser": "Chrome",
+      "deviceName": "Android (Chrome)",
+      "userId": "stu_1795839550817_nsfxm",
+      "username": "kimel",
+      "userName": "Alvaro Pratama Herlen",
+      "userRole": "siswa",
+      "id": "sess_1795867281540_pyuh",
+      "lastActive": "2026-11-28T12:01:21.540Z",
+      "createdAt": "2026-11-28T04:55:58.416Z"
     }
   ],
   "schoolClasses": [
@@ -986,5 +1006,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 574
+  "syncVersion": 579
 }
