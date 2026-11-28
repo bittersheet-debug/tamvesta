@@ -540,6 +540,18 @@
   "notes": [],
   "notifications": [
     {
+      "id": "notif_1795842191506_u0z4b",
+      "title": "ujian",
+      "message": "test",
+      "type": "announcement",
+      "isImportant": true,
+      "linkType": "announcement",
+      "targetRole": "siswa",
+      "readBy": [],
+      "deletedBy": [],
+      "createdAt": "2026-11-28T05:03:11.506Z"
+    },
+    {
       "id": "notif_1795842063854_shsjm",
       "title": "Pengajuan Ganti Sandi di-ACC",
       "message": "Pengajuan ganti sandi Anda (Tiket: TKT-302331) telah di-ACC oleh Admin. Kata sandi baru Anda telah aktif dan dapat langsung digunakan.",
@@ -629,6 +641,16 @@
   "tuMonthlyReports": [],
   "gameRooms": [],
   "refreshSignals": [
+    {
+      "id": "sig_1795842191509_p1q5",
+      "userId": "user_admin_tamansiswa",
+      "userName": "Administrator Tamansiswa Batam",
+      "userUsername": "TAMANSISWA",
+      "userKelas": "Notif ke siswa",
+      "timestamp": "2026-11-28T05:03:11.508Z",
+      "formattedTime": "05.03.11 WIB",
+      "status": "received"
+    },
     {
       "id": "sig_1795842067034_zpki",
       "userId": "user_admin_tamansiswa",
@@ -793,5 +815,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 120
+  "syncVersion": 145
 }
