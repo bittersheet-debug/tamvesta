@@ -471,7 +471,9 @@
       "isPinned": false,
       "caption": "Hii",
       "mediaType": "none",
-      "likes": [],
+      "likes": [
+        "stu_1795866977051_m9dt1"
+      ],
       "comments": [],
       "createdAt": "2026-11-28T12:00:38.560Z"
     },
@@ -985,5 +987,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 499
+  "syncVersion": 505
 }
