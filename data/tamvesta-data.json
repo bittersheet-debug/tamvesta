@@ -7,8 +7,8 @@
       "role": "admin",
       "jabatan": "Administrator Utama TAMVESTA",
       "initialPassword": "TAMVESTA123",
-      "passwordHash": "c3fd9268242c7c3edc30bcc8fc15494e62c5503824a70990805843e074db67db54cb26d5e71839cd09b8ae6f569b6eaa301ff8a40380340b16684b1edb2dfd18",
-      "salt": "5c6042ce06e533d8a2e3b377ba529e75",
+      "passwordHash": "f6849019e8c9f54acfab9c32153f343b0382c696b535d73b70a4fc5bb01ecd1c0da7b0dc7ecbe20c630bf58550900a48e94ff4bf8e149edceb4f94fdb017c95d",
+      "salt": "48412f378becc05dfea7101ea07bebc4",
       "mustChangePassword": false,
       "isActive": true,
       "qrToken": "TAMVESTA:STUDENT:user_admin_tamansiswa:785efa956b468c8f",
@@ -70,8 +70,8 @@
       "role": "admin",
       "jabatan": "Operator Dapodik Sekolah",
       "initialPassword": "Tamvesta!B2604",
-      "passwordHash": "c3fd9268242c7c3edc30bcc8fc15494e62c5503824a70990805843e074db67db54cb26d5e71839cd09b8ae6f569b6eaa301ff8a40380340b16684b1edb2dfd18",
-      "salt": "5c6042ce06e533d8a2e3b377ba529e75",
+      "passwordHash": "f6849019e8c9f54acfab9c32153f343b0382c696b535d73b70a4fc5bb01ecd1c0da7b0dc7ecbe20c630bf58550900a48e94ff4bf8e149edceb4f94fdb017c95d",
+      "salt": "48412f378becc05dfea7101ea07bebc4",
       "mustChangePassword": false,
       "isActive": true,
       "qrToken": "TAMVESTA:STUDENT:user_staff_bambang_operator:fc992c0f9fb9de13",
@@ -317,8 +317,8 @@
       "jabatan": "Developer Resmi TAMVESTA",
       "initialPassword": "TAMVESTATAMSIS",
       "password": "TAMVESTATAMSIS",
-      "passwordHash": "c51fe7ab89a1cd44ae8f0179c2da48767e677cb7fc2b262080cf5305c4df32a5ceb6db4c9d2a33cfff087641d1913e9aedc56d5f75d77a4a0405caad46dda62e",
-      "salt": "488b50ba48941d59b07204134f30e62f",
+      "passwordHash": "cd7cd6fe4ccc822e13f09b57c5501b2232d6e906c0fc833903c99f0393ef40e9dbe1523e39c87f44a9c585c41d1fae9539c2948daae53fe34890084187fdcc15",
+      "salt": "f888ed40020743766c8afd7f06510eb4",
       "mustChangePassword": false,
       "isActive": true,
       "isVerified": true,
@@ -635,5 +635,56 @@
     "guru.bahasa",
     "kepala.sekolah",
     "panitia.osis"
-  ]
+  ],
+  "schoolClasses": [
+    {
+      "id": "class_7a",
+      "name": "Kelas 7A",
+      "grade": "7",
+      "description": "Kelas 7 Unggulan",
+      "createdAt": "2026-11-28T04:17:27.340Z",
+      "updatedAt": "2026-11-28T04:17:27.340Z"
+    },
+    {
+      "id": "class_7b",
+      "name": "Kelas 7B",
+      "grade": "7",
+      "description": "Kelas 7 Reguler",
+      "createdAt": "2026-11-28T04:17:27.340Z",
+      "updatedAt": "2026-11-28T04:17:27.340Z"
+    },
+    {
+      "id": "class_8a",
+      "name": "Kelas 8A",
+      "grade": "8",
+      "description": "Kelas 8 Unggulan",
+      "createdAt": "2026-11-28T04:17:27.340Z",
+      "updatedAt": "2026-11-28T04:17:27.340Z"
+    },
+    {
+      "id": "class_8b",
+      "name": "Kelas 8B",
+      "grade": "8",
+      "description": "Kelas 8 Reguler",
+      "createdAt": "2026-11-28T04:17:27.340Z",
+      "updatedAt": "2026-11-28T04:17:27.340Z"
+    },
+    {
+      "id": "class_9a",
+      "name": "Kelas 9A",
+      "grade": "9",
+      "description": "Kelas 9 Persiapan Ujian",
+      "createdAt": "2026-11-28T04:17:27.340Z",
+      "updatedAt": "2026-11-28T04:17:27.340Z"
+    },
+    {
+      "id": "class_9b",
+      "name": "Kelas 9B",
+      "grade": "9",
+      "description": "Kelas 9 Reguler",
+      "createdAt": "2026-11-28T04:17:27.340Z",
+      "updatedAt": "2026-11-28T04:17:27.340Z"
+    }
+  ],
+  "schedules": []
 }
