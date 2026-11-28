@@ -472,7 +472,8 @@
       "caption": "Hii",
       "mediaType": "none",
       "likes": [
-        "stu_1795866977051_m9dt1"
+        "stu_1795866977051_m9dt1",
+        "stu_1795839550817_nsfxm"
       ],
       "comments": [
         {
@@ -982,5 +983,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 566
+  "syncVersion": 570
 }
