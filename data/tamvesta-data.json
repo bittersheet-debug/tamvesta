@@ -579,17 +579,6 @@
       "createdAt": "2026-11-28T05:04:26.598Z"
     },
     {
-      "id": "notif_1794044519451_8fhlo",
-      "title": "✅ Pendaftaran Siswa Di-ACC",
-      "message": "Pendaftaran akun siswa Siswa Percobaan PPDB (@test.siswa.1794044519232) telah disetujui (ACC) oleh Admin Penguji. Akun kini aktif.",
-      "type": "system",
-      "isImportant": false,
-      "linkType": "none",
-      "readBy": [],
-      "deletedBy": [],
-      "createdAt": "2026-11-07T09:41:59.451Z"
-    },
-    {
       "id": "notif_1794044519265_sww7u",
       "title": "📋 Pendaftaran Siswa Baru (Menunggu ACC)",
       "message": "Calon siswa: Siswa Percobaan PPDB (REG-2026-16538) mendaftar untuk kelas Kelas 7. Menunggu verifikasi dan persetujuan (ACC).",
@@ -644,16 +633,6 @@
   "tuMonthlyReports": [],
   "gameRooms": [],
   "refreshSignals": [
-    {
-      "id": "sig_1795849281980_ahpq",
-      "userId": "user_admin_tamansiswa",
-      "userName": "Administrator Tamansiswa Batam",
-      "userUsername": "TAMANSISWA",
-      "userKelas": "Notif ke siswa",
-      "timestamp": "2026-11-28T07:01:21.953Z",
-      "formattedTime": "07.01.21 WIB",
-      "status": "received"
-    },
     {
       "id": "sig_1794044519462_c63l",
       "userKelas": "-",
@@ -854,7 +833,8 @@
     "notif_1795842191506_u0z4b",
     "notif_1795842238638_a88a3",
     "notif_1795842063854_shsjm",
-    "notif_1795842055353_zhxzc"
+    "notif_1795842055353_zhxzc",
+    "notif_1794044519451_8fhlo"
   ],
   "deletedArticleIds": [],
   "deletedEventIds": [],
@@ -863,5 +843,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 323
+  "syncVersion": 329
 }
