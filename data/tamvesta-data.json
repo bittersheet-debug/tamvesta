@@ -65,7 +65,7 @@
       "createdAt": "2026-10-24T08:22:46.854Z",
       "updatedAt": "2026-10-24T08:22:46.854Z",
       "tokenVersion": 0,
-      "isVerified": false,
+      "isVerified": true,
       "badgeType": "blue"
     },
     {
@@ -98,7 +98,9 @@
       "qrToken": "TAMVESTA:STUDENT:user_staff_haliza_tu:d381f9125fc3ff05",
       "createdAt": "2026-10-24T08:22:46.882Z",
       "updatedAt": "2026-10-24T08:22:46.882Z",
-      "tokenVersion": 0
+      "tokenVersion": 0,
+      "isVerified": true,
+      "badgeType": "blue"
     },
     {
       "id": "user_staff_maidarlis",
@@ -114,7 +116,7 @@
       "createdAt": "2026-10-24T08:22:46.898Z",
       "updatedAt": "2026-10-24T08:22:46.899Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -131,7 +133,7 @@
       "createdAt": "2026-10-24T08:22:46.915Z",
       "updatedAt": "2026-10-24T08:22:46.915Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -148,7 +150,7 @@
       "createdAt": "2026-10-24T08:22:46.927Z",
       "updatedAt": "2026-10-24T08:22:46.927Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -165,7 +167,7 @@
       "createdAt": "2026-10-24T08:22:46.946Z",
       "updatedAt": "2026-10-24T08:22:46.946Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -182,7 +184,7 @@
       "createdAt": "2026-10-24T08:22:46.969Z",
       "updatedAt": "2026-10-24T08:22:46.969Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -199,7 +201,7 @@
       "createdAt": "2026-10-24T08:22:46.986Z",
       "updatedAt": "2026-10-24T08:22:46.986Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -216,7 +218,7 @@
       "createdAt": "2026-10-24T08:22:47.002Z",
       "updatedAt": "2026-10-24T08:22:47.002Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -233,7 +235,7 @@
       "createdAt": "2026-10-24T08:22:47.018Z",
       "updatedAt": "2026-10-24T08:22:47.019Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -250,7 +252,7 @@
       "createdAt": "2026-10-24T08:22:47.029Z",
       "updatedAt": "2026-10-24T08:22:47.029Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -267,7 +269,7 @@
       "createdAt": "2026-10-24T08:22:47.047Z",
       "updatedAt": "2026-10-24T08:22:47.047Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -284,7 +286,7 @@
       "createdAt": "2026-10-24T08:22:47.066Z",
       "updatedAt": "2026-10-24T08:22:47.066Z",
       "isVerified": true,
-      "badgeType": "green",
+      "badgeType": "blue",
       "tokenVersion": 0
     },
     {
@@ -732,8 +734,8 @@
       "username": "kimel",
       "userName": "Alvaro Pratama Herlen",
       "userRole": "siswa",
-      "id": "sess_1795842830698_rnlj",
-      "lastActive": "2026-11-28T05:13:50.698Z",
+      "id": "sess_1795849182226_z7xi",
+      "lastActive": "2026-11-28T06:59:42.226Z",
       "createdAt": "2026-11-28T04:55:58.416Z"
     },
     {
@@ -883,5 +885,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 267
+  "syncVersion": 299
 }
