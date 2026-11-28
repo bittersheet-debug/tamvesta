@@ -386,8 +386,8 @@
       "role": "siswa",
       "gender": "Laki-laki",
       "kelas": "Kelas 8",
-      "passwordHash": "2b6546ea7fe1dde0674fca72f1cb6bdfb91db364d4b927c38d9a86399723c01646b03cbff4c0af2455ce34e457dc5501c2ea512a3732de0145ac4bf2aeac310b",
-      "salt": "f8b049b1f58d596da2280b1203ccd2c2",
+      "passwordHash": "pbkdf2v2$088ed474d065c10ebdd599921eab1c8a42e4a874c99dfee61858065ff193fa5b09ee7f14ec5ccb2c99ea0d804229b81a8fb4b6cda74dea90517887b7ffba5a1e",
+      "salt": "7a9fd839b70c71b460e5c0870d47eb80",
       "mustChangePassword": false,
       "isActive": true,
       "qrToken": "TAMVESTA:STUDENT:stu_1795839550817_nsfxm:5aa97099d5d26da4",
@@ -684,5 +684,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 19
+  "syncVersion": 30
 }
