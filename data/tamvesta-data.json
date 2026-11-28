@@ -79,7 +79,9 @@
       "qrToken": "TAMVESTA:STUDENT:user_staff_bambang_operator:fc992c0f9fb9de13",
       "createdAt": "2026-10-24T08:22:46.865Z",
       "updatedAt": "2026-10-24T08:22:46.865Z",
-      "tokenVersion": 0
+      "tokenVersion": 0,
+      "isVerified": true,
+      "badgeType": "blue"
     },
     {
       "id": "user_staff_haliza_tu",
@@ -676,6 +678,36 @@
   "gameRooms": [],
   "refreshSignals": [
     {
+      "id": "sig_1795842191509_p1q5",
+      "userId": "user_admin_tamansiswa",
+      "userName": "Administrator Tamansiswa Batam",
+      "userUsername": "TAMANSISWA",
+      "userKelas": "Notif ke siswa",
+      "timestamp": "2026-11-28T05:03:11.508Z",
+      "formattedTime": "05.03.11 WIB",
+      "status": "received"
+    },
+    {
+      "id": "sig_1795842067034_zpki",
+      "userId": "user_admin_tamansiswa",
+      "userName": "Administrator Tamansiswa Batam",
+      "userUsername": "TAMANSISWA",
+      "userKelas": "-",
+      "timestamp": "2026-11-28T05:01:07.034Z",
+      "formattedTime": "05.01.07 WIB",
+      "status": "received"
+    },
+    {
+      "id": "sig_1795842063885_2j1o",
+      "userId": "stu_1795839550817_nsfxm",
+      "userName": "Alvaro Pratama Herlen",
+      "userUsername": "kimel",
+      "userKelas": "-",
+      "timestamp": "2026-11-28T05:01:03.858Z",
+      "formattedTime": "05.01.03 WIB",
+      "status": "received"
+    },
+    {
       "id": "sig_1794044519462_c63l",
       "userKelas": "-",
       "timestamp": "2026-11-07T09:41:59.462Z",
@@ -728,6 +760,19 @@
       "username": "kimel",
       "userName": "Alvaro Pratama Herlen",
       "userRole": "siswa",
+      "id": "sess_1795842099582_sndg",
+      "lastActive": "2026-11-28T05:01:39.582Z",
+      "createdAt": "2026-11-28T04:55:58.416Z"
+    },
+    {
+      "deviceType": "mobile",
+      "os": "Android",
+      "browser": "Chrome",
+      "deviceName": "Android (Chrome)",
+      "userId": "stu_1795839550817_nsfxm",
+      "username": "kimel",
+      "userName": "Alvaro Pratama Herlen",
+      "userRole": "siswa",
       "id": "sess_1795841758416_kiyl",
       "lastActive": "2026-11-28T04:55:58.416Z",
       "createdAt": "2026-11-28T04:55:58.416Z"
@@ -743,19 +788,6 @@
       "userRole": "siswa",
       "id": "sess_1795842078480_0m7d",
       "lastActive": "2026-11-28T05:01:18.480Z",
-      "createdAt": "2026-11-28T04:55:58.416Z"
-    },
-    {
-      "deviceType": "mobile",
-      "os": "Android",
-      "browser": "Chrome",
-      "deviceName": "Android (Chrome)",
-      "userId": "stu_1795839550817_nsfxm",
-      "username": "kimel",
-      "userName": "Alvaro Pratama Herlen",
-      "userRole": "siswa",
-      "id": "sess_1795842099582_sndg",
-      "lastActive": "2026-11-28T05:01:39.582Z",
       "createdAt": "2026-11-28T04:55:58.416Z"
     }
   ],
@@ -866,5 +898,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 197
+  "syncVersion": 202
 }
