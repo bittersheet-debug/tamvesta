@@ -31,8 +31,7 @@
       "createdAt": "2026-10-24T08:22:46.821Z",
       "updatedAt": "2026-10-24T08:22:46.821Z",
       "tokenVersion": 0,
-      "isVerified": true,
-      "badgeType": "blue"
+      "isVerified": false
     },
     {
       "id": "user_staff_titus_yayasan",
@@ -883,5 +882,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 249
+  "syncVersion": 251
 }
