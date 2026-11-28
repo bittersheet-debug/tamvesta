@@ -621,16 +621,6 @@
   "gameRooms": [],
   "refreshSignals": [
     {
-      "id": "sig_1795849281980_ahpq",
-      "userId": "user_admin_tamansiswa",
-      "userName": "Administrator Tamansiswa Batam",
-      "userUsername": "TAMANSISWA",
-      "userKelas": "Notif ke siswa",
-      "timestamp": "2026-11-28T07:01:21.953Z",
-      "formattedTime": "07.01.21 WIB",
-      "status": "received"
-    },
-    {
       "id": "sig_1794044519462_c63l",
       "userKelas": "-",
       "timestamp": "2026-11-07T09:41:59.462Z",
@@ -737,14 +727,6 @@
       "updatedAt": "2026-11-28T04:18:00.497Z"
     },
     {
-      "id": "class_7b",
-      "name": "Kelas 7B",
-      "grade": "7",
-      "description": "Kelas 7 Reguler",
-      "createdAt": "2026-11-28T04:18:00.497Z",
-      "updatedAt": "2026-11-28T04:18:00.497Z"
-    },
-    {
       "id": "class_8a",
       "name": "Kelas 8A",
       "grade": "8",
@@ -823,7 +805,9 @@
   "deletedSubjectIds": [],
   "deletedAnnouncementIds": [],
   "deletedScheduleIds": [],
-  "deletedClassIds": [],
+  "deletedClassIds": [
+    "class_7b"
+  ],
   "deletedDeviceIds": [],
   "deletedMessageIds": [],
   "deletedNotificationIds": [
@@ -841,5 +825,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 336
+  "syncVersion": 363
 }
