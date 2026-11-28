@@ -567,19 +567,6 @@
       "createdAt": "2026-11-28T05:04:26.598Z"
     },
     {
-      "id": "notif_1795842238638_a88a3",
-      "title": "Tiket Kendala Teknis TAMVESTA",
-      "message": "Alvaro Pratama Herlen melaporkan: \"Aplikasi Tidak Bisa\" (error_bug).",
-      "type": "app_report",
-      "isImportant": false,
-      "linkType": "reports",
-      "linkId": "rep_1795842238635_si06",
-      "targetRole": "support",
-      "readBy": [],
-      "deletedBy": [],
-      "createdAt": "2026-11-28T05:03:58.638Z"
-    },
-    {
       "id": "notif_1795842063854_shsjm",
       "title": "Pengajuan Ganti Sandi di-ACC",
       "message": "Pengajuan ganti sandi Anda (Tiket: TKT-302331) telah di-ACC oleh Admin. Kata sandi baru Anda telah aktif dan dapat langsung digunakan.",
@@ -866,7 +853,8 @@
   "deletedDeviceIds": [],
   "deletedMessageIds": [],
   "deletedNotificationIds": [
-    "notif_1795842191506_u0z4b"
+    "notif_1795842191506_u0z4b",
+    "notif_1795842238638_a88a3"
   ],
   "deletedArticleIds": [],
   "deletedEventIds": [],
@@ -875,5 +863,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 305
+  "syncVersion": 308
 }
