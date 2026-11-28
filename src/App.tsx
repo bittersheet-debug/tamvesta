@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
+import { ToastProvider } from './context/ToastContext.tsx';
 import { Login } from './pages/Login.tsx';
 import { Navbar } from './components/Navbar.tsx';
 import { StudentDashboard } from './pages/student/StudentDashboard.tsx';
@@ -210,7 +211,9 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
-        <AppContent />
+        <ToastProvider>
+          <AppContent />
+        </ToastProvider>
       </AuthProvider>
     </ErrorBoundary>
   );

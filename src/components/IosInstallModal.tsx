@@ -50,7 +50,7 @@ export const IosInstallModal: React.FC<Props> = ({ isOpen, onClose }) => {
             <div className="space-y-1">
               <p className="text-xs font-bold text-slate-900">Buka di Browser Safari</p>
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                Pastikan Anda membuka website <span className="font-mono text-emerald-700 font-semibold">apkupdate-indol.vercel.app</span> melalui aplikasi browser bawaan <strong>Safari</strong> (bukan Chrome/browser dalam aplikasi media sosial).
+                Pastikan Anda membuka website <span className="font-mono text-emerald-700 font-semibold">tamvesta.vercel.app</span> melalui aplikasi browser bawaan <strong>Safari</strong> (bukan Chrome/browser dalam aplikasi media sosial).
               </p>
             </div>
           </div>

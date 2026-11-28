@@ -17,6 +17,7 @@ import {
   Pin,
 } from 'lucide-react';
 import { api, offlineStore } from '../lib/api.ts';
+import { useToast } from '../context/ToastContext.tsx';
 import type { StudentPost, User } from '../types/index.ts';
 import { ImageLightboxModal } from './ImageLightboxModal.tsx';
 import { VerifiedBadge } from './VerifiedBadge.tsx';
@@ -38,6 +39,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   onEditProfile,
   onPostClick,
 }) => {
+  const { showSuccess, showError } = useToast();
   const [profileUser, setProfileUser] = useState<Partial<User> | null>(null);
   const [posts, setPosts] = useState<StudentPost[]>([]);
   const [followersCount, setFollowersCount] = useState(0);
@@ -108,7 +110,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const handleModerateAvatar = async () => {
     if (!profileUser?.id) return;
     if (!moderationReason.trim()) {
-      alert('Mohon masukkan alasan moderasi foto profil.');
+      showError('Validasi Gagal', 'Mohon masukkan alasan moderasi foto profil.');
       return;
     }
     setIsModerating(true);
@@ -117,13 +119,14 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       setProfileUser((prev) =>
         prev ? { ...prev, avatarUrl: '/assets/tamvesta_mascot.jpg' } : prev
       );
-      alert(
+      showSuccess(
+        'Foto Direset',
         `Foto profil ${profileUser.name} berhasil di-reset ke default maskot TAMVESTA dan dicatat di log moderasi admin.`
       );
       setShowModerationModal(false);
       setModerationReason('');
     } catch (err: any) {
-      alert(err.message || 'Gagal mereset foto profil.');
+      showError('Gagal Moderasi', err.message || 'Gagal mereset foto profil.');
     } finally {
       setIsModerating(false);
     }

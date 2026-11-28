@@ -65,10 +65,14 @@ export const Navbar: React.FC<Props> = ({ currentTab = 'mapel', onNavigate }) =>
       setNotifPerm(e.detail || getNotificationPermission());
     };
     window.addEventListener('tamvesta_refresh_notifications', handleRefresh);
+    window.addEventListener('tamvesta_admin_notification', handleRefresh);
+    window.addEventListener('tamvesta_realtime_sync', handleRefresh);
     window.addEventListener('tamvesta_notification_permission_changed', handlePermChange);
     return () => {
       clearInterval(interval);
       window.removeEventListener('tamvesta_refresh_notifications', handleRefresh);
+      window.removeEventListener('tamvesta_admin_notification', handleRefresh);
+      window.removeEventListener('tamvesta_realtime_sync', handleRefresh);
       window.removeEventListener('tamvesta_notification_permission_changed', handlePermChange);
     };
   }, []);

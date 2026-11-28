@@ -3,102 +3,144 @@ import type { Request, Response, NextFunction } from 'express';
 import { db } from './db.ts';
 import type { User, UserRole } from '../types/index.ts';
 
-const TOKEN_SECRET = 'TAMVESTA-SESSION-KEY-2026';
+const TOKEN_SECRET = process.env.TAMVESTA_TOKEN_SECRET || 'TAMVESTA-SESSION-KEY-2026';
 
 export interface AuthenticatedRequest extends Request {
   user?: User;
+  deviceId?: string;
 }
 
-// Simple signed token format: base64(userId:timestamp):signature
-export function createSessionToken(userId: string): string {
-  const payload = `${userId}:${Date.now()}`;
+export interface VerifiedSession {
+  userId: string;
+  tokenVersion: number;
+}
+
+// Signed token format: base64url(userId|timestamp|tokenVersion).hmacSha256Hex
+export function createSessionToken(userId: string, tokenVersion: number = 0): string {
+  const payload = `${userId}|${Date.now()}|${tokenVersion}`;
   const encodedPayload = Buffer.from(payload).toString('base64url');
   const signature = crypto.createHmac('sha256', TOKEN_SECRET).update(encodedPayload).digest('hex');
   return `${encodedPayload}.${signature}`;
 }
 
-export function verifySessionToken(token: string): string | null {
+export function verifySessionToken(token: string): VerifiedSession | null {
   try {
     const [encodedPayload, signature] = token.split('.');
     if (!encodedPayload || !signature) return null;
 
     const expectedSig = crypto.createHmac('sha256', TOKEN_SECRET).update(encodedPayload).digest('hex');
-    if (!crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expectedSig, 'hex'))) {
+    const sigBuf = Buffer.from(signature, 'hex');
+    const expBuf = Buffer.from(expectedSig, 'hex');
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
       return null;
     }
 
     const payload = Buffer.from(encodedPayload, 'base64url').toString('utf-8');
-    const [userId, timestampStr] = payload.split(':');
-    const timestamp = parseInt(timestampStr, 10);
+    let userId = '';
+    let timestamp = 0;
+    let tokenVersion = 0;
+
+    if (payload.includes('|')) {
+      const parts = payload.split('|');
+      userId = parts[0] || '';
+      timestamp = parseInt(parts[1] || '0', 10);
+      tokenVersion = parseInt(parts[2] || '0', 10) || 0;
+    } else {
+      const parts = payload.split(':');
+      userId = parts[0] || '';
+      timestamp = parseInt(parts[1] || '0', 10);
+    }
+
+    if (!userId || !Number.isFinite(timestamp)) return null;
 
     // 7-day token expiration
     if (Date.now() - timestamp > 7 * 24 * 60 * 60 * 1000) {
       return null;
     }
 
-    return userId;
+    return { userId, tokenVersion };
   } catch {
     return null;
   }
 }
 
-export function authMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+function extractRequestToken(req: Request): string | null {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Sesi tidak valid. Harap login kembali.' });
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7).trim();
+  }
+  const queryToken = typeof req.query.token === 'string' ? req.query.token.trim() : '';
+  if (queryToken) return queryToken;
+  return null;
+}
+
+function extractDeviceId(req: Request): string | undefined {
+  const hdr = req.headers['x-device-id'];
+  if (typeof hdr === 'string' && hdr.trim()) return hdr.trim();
+  const q = typeof req.query.deviceId === 'string' ? req.query.deviceId.trim() : '';
+  return q || undefined;
+}
+
+export function authMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  const token = extractRequestToken(req);
+  if (!token) {
+    return res.status(401).json({ error: 'Sesi tidak valid. Harap login kembali.', code: 'NO_TOKEN' });
   }
 
-  const token = authHeader.substring(7);
-
-  // Allow offline token fallback for standalone/local client sync
-  if (token.startsWith('offline_token_')) {
-    const offlineId = token.replace('offline_token_', '');
-    const user = db.findUserById(offlineId) || (offlineId.includes('admin') ? db.findUserByUsername('TAMANSISWA') : null);
-    if (user && user.isActive) {
-      req.user = user;
-      return next();
-    }
+  const verified = verifySessionToken(token);
+  if (!verified) {
+    return res.status(401).json({ error: 'Token kadaluarsa atau tidak valid.', code: 'INVALID_TOKEN' });
   }
 
-  const userId = verifySessionToken(token);
-  if (!userId) {
-    return res.status(401).json({ error: 'Token kadaluarsa atau tidak valid.' });
+  if (db.isUserDeleted(verified.userId)) {
+    return res.status(401).json({ error: 'Akun Anda telah dihapus dari sistem. Harap hubungi Administrator.', code: 'SESSION_REVOKED' });
   }
 
-  const user = db.findUserById(userId);
+  const user = db.findUserById(verified.userId);
   if (!user) {
-    return res.status(401).json({ error: 'Pengguna tidak ditemukan.' });
+    return res.status(401).json({ error: 'Pengguna tidak ditemukan atau telah dihapus.', code: 'SESSION_REVOKED' });
   }
 
-  if (!user.isActive) {
-    return res.status(403).json({ error: 'Akun Anda dinonaktifkan. Silakan hubungi Administrator.' });
+  if (!user.isActive || user.registrationStatus === 'rejected') {
+    return res.status(403).json({ error: 'Akun Anda dinonaktifkan. Silakan hubungi Administrator.', code: 'ACCOUNT_DISABLED' });
+  }
+
+  const liveVersion = user.tokenVersion ?? 0;
+  if (liveVersion !== verified.tokenVersion) {
+    return res.status(401).json({
+      error: 'Sesi Anda telah dicabut karena perubahan keamanan/akun. Silakan login kembali.',
+      code: 'SESSION_REVOKED',
+    });
+  }
+
+  const sessionId = typeof req.headers['x-session-id'] === 'string' ? req.headers['x-session-id'].trim() : '';
+  if (sessionId && db.isDeviceSessionDeleted(sessionId)) {
+    return res.status(401).json({
+      error: 'Sesi perangkat ini telah diakhiri oleh Admin. Silakan login ulang.',
+      code: 'SESSION_REVOKED',
+    });
   }
 
   req.user = user;
+  req.deviceId = extractDeviceId(req);
   next();
 }
 
-export function optionalAuthMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+export function optionalAuthMiddleware(req: AuthenticatedRequest, _res: Response, next: NextFunction) {
+  const token = extractRequestToken(req);
+  if (!token) {
     return next();
   }
 
-  const token = authHeader.substring(7);
-  if (token.startsWith('offline_token_')) {
-    const offlineId = token.replace('offline_token_', '');
-    const user = db.findUserById(offlineId) || (offlineId.includes('admin') ? db.findUserByUsername('TAMANSISWA') : null);
-    if (user && user.isActive) {
-      req.user = user;
-      return next();
-    }
-  }
-
-  const userId = verifySessionToken(token);
-  if (userId) {
-    const user = db.findUserById(userId);
-    if (user && user.isActive) {
-      req.user = user;
+  const verified = verifySessionToken(token);
+  if (verified && !db.isUserDeleted(verified.userId)) {
+    const user = db.findUserById(verified.userId);
+    if (user && user.isActive && (user.tokenVersion ?? 0) === verified.tokenVersion) {
+      const sessionId = typeof req.headers['x-session-id'] === 'string' ? req.headers['x-session-id'].trim() : '';
+      if (!sessionId || !db.isDeviceSessionDeleted(sessionId)) {
+        req.user = user;
+        req.deviceId = extractDeviceId(req);
+      }
     }
   }
 

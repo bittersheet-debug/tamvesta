@@ -3,7 +3,7 @@
   "appName": "TAMVESTA",
   "webDir": "dist",
   "server": {
-    "url": "https://apkupdate-indol.vercel.app",
+    "url": "https://tamvesta.vercel.app",
     "cleartext": true
   },
   "android": {

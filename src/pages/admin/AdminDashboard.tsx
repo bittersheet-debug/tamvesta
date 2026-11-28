@@ -52,6 +52,11 @@ import {
   LayoutDashboard,
   Smartphone,
   History,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  CheckCheck,
+  Loader2,
 } from 'lucide-react';
 import { SchoolOverviewTab } from './SchoolOverviewTab.tsx';
 import { ClassManagementTab } from './ClassManagementTab.tsx';
@@ -63,6 +68,7 @@ import { DirectMessagesPage } from '../dm/DirectMessagesPage.tsx';
 import { api } from '../../lib/api.ts';
 import type {
   User,
+  UserRole,
   Subject,
   DigitalBook,
   Announcement,
@@ -79,11 +85,14 @@ import type {
   SchoolActivityLog,
   StudentPost,
   Story,
+  AppNotification,
 } from '../../types/index.ts';
 import { StudentProfileModal } from '../../components/StudentProfileModal.tsx';
 import { ImageLightboxModal } from '../../components/ImageLightboxModal.tsx';
 import { VerifiedBadge } from '../../components/VerifiedBadge.tsx';
 import { NotificationBroadcastPanel } from '../../components/NotificationBroadcastPanel.tsx';
+import { ConfirmDeleteModal } from '../../components/ConfirmDeleteModal.tsx';
+import { useToast } from '../../context/ToastContext.tsx';
 
 type AdminTab =
   | 'overview'
@@ -105,7 +114,21 @@ type AdminTab =
   | 'notifications';
 
 export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpenScanner }) => {
+  const { showSuccess, showError, showInfo } = useToast();
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [adminNotifications, setAdminNotifications] = useState<(AppNotification & { isRead: boolean })[]>([]);
+  const [showAdminNotifDrawer, setShowAdminNotifDrawer] = useState(false);
+  const [pendingDeleteModal, setPendingDeleteModal] = useState<{
+    title: string;
+    itemName: string;
+    message?: string;
+    onExecute: () => Promise<void>;
+  } | null>(null);
+  const [confirmDeleteLoading, setConfirmDeleteLoading] = useState(false);
+  const [creatingTeacherLoading, setCreatingTeacherLoading] = useState(false);
+
   // --- New Admin Features State (Dashboard Sekolah, Kelas, Jadwal, DM, Social Monitor, Devices, Activity Log) ---
   const [schoolClasses, setSchoolClasses] = useState<SchoolClass[]>([]);
   const [schedules, setSchedules] = useState<ClassSchedule[]>([]);
@@ -113,7 +136,7 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
   const [activityLogs, setActivityLogs] = useState<SchoolActivityLog[]>([]);
   const [feedPosts, setFeedPosts] = useState<StudentPost[]>([]);
   const [allStories, setAllStories] = useState<Story[]>([]);
-  const [newStaffRole, setNewStaffRole] = useState<'guru' | 'admin' | 'tata_usaha' | 'kepala_sekolah'>('guru');
+  const [newStaffRole, setNewStaffRole] = useState<'guru' | 'admin' | 'tata_usaha' | 'kepala_sekolah' | 'satpam' | 'panitia'>('guru');
   const [resetRequests, setResetRequests] = useState<PasswordResetRequest[]>([]);
   const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
   const [isSyncingMultiDevice, setIsSyncingMultiDevice] = useState<boolean>(false);
@@ -163,6 +186,8 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
   const [editFormUsername, setEditFormUsername] = useState('');
   const [editFormPhone, setEditFormPhone] = useState('');
   const [editFormEmail, setEditFormEmail] = useState('');
+  const [editFormPassword, setEditFormPassword] = useState('');
+  const [editFormActive, setEditFormActive] = useState(true);
   const [editStudentLoading, setEditStudentLoading] = useState(false);
 
   // Delete Student Modal state
@@ -328,6 +353,9 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
     jabatan: '',
     email: '',
     phone: '',
+    role: 'guru' as UserRole,
+    password: '',
+    isActive: true,
   });
 
   // --- Excel Backup State ---
@@ -368,8 +396,9 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       setStudents((prev) =>
         prev.map((s) => (s.id === studentId ? { ...s, isAlumni: res.isAlumni } : s))
       );
+      showSuccess('Kategori Diperbarui', `Status berubah menjadi ${res.isAlumni ? 'Alumni' : 'Siswa Aktif'}.`);
     } catch (err: any) {
-      alert(err.message || 'Gagal mengubah status kategori alumni.');
+      showError('Gagal Mengubah Kategori', err.message || 'Gagal mengubah status kategori alumni.');
     }
   };
 
@@ -382,6 +411,9 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
   };
 
   const handleToggleVerified = async (userId: string) => {
+    // Jangan toggle jika user adalah guru (permanen)
+    const targetStaff = staffList.find((s) => s.id === userId);
+    if (targetStaff?.role === 'guru') return;
     try {
       const res = await api.toggleVerifiedBadge(userId);
       setStudents((prev) =>
@@ -390,10 +422,11 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       setStaffList((prev) =>
         prev.map((s) => (s.id === userId ? { ...s, isVerified: res.isVerified } : s))
       );
+      showSuccess('Verifikasi Diperbarui', `Centang verifikasi kini ${res.isVerified ? 'Aktif' : 'Nonaktif'}.`);
       // Kirim sinyal sinkronisasi ke seluruh aplikasi & perangkat
       notifyMultiDeviceSync();
     } catch (err: any) {
-      alert(err.message || 'Gagal mengubah status verifikasi centang biru.');
+      showError('Gagal Mengubah Verifikasi', err.message || 'Gagal mengubah status verifikasi centang biru.');
     }
   };
 
@@ -451,10 +484,11 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
   const handleCreateTeacher = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTeacherForm.name.trim() || !newTeacherForm.username.trim() || !newTeacherForm.password.trim()) {
-      alert('Nama, username, dan password guru wajib diisi.');
+      showError('Validasi Gagal', 'Nama, username, dan password akun wajib diisi.');
       return;
     }
 
+    setCreatingTeacherLoading(true);
     try {
       let res: any;
       if (newStaffRole === 'guru') {
@@ -470,7 +504,7 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
           phone: newTeacherForm.phone,
         });
       }
-      const createdTeacher = (res as any)?.teacher;
+      const createdTeacher = (res as any)?.teacher || (res as any)?.staff;
       if (createdTeacher) {
         setStaffList((prev) => [
           createdTeacher,
@@ -482,11 +516,12 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
         ]);
       }
 
-      // Reset search and role filter so the new teacher is visible immediately!
       setStaffSearch('');
       setStaffRoleFilter('all');
 
-      setStaffActionSuccess(res.message || 'Akun guru baru berhasil ditambahkan.');
+      const successMsg = res.message || `Akun ${newTeacherForm.name.trim()} berhasil ditambahkan dan disinkronkan.`;
+      setStaffActionSuccess(successMsg);
+      showSuccess('Akun Berhasil Ditambahkan', successMsg);
       setShowAddTeacherModal(false);
       setNewTeacherForm({
         name: '',
@@ -498,25 +533,18 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       });
 
       const updatedStaff = await api.getStaff();
-      if (Array.isArray(updatedStaff) && updatedStaff.length > 0) {
-        if (
-          createdTeacher &&
-          !updatedStaff.some(
-            (s) =>
-              s.id === createdTeacher.id ||
-              (s.username || '').toLowerCase() === (createdTeacher.username || '').toLowerCase()
-          )
-        ) {
-          setStaffList([createdTeacher, ...updatedStaff]);
-        } else {
-          setStaffList(updatedStaff);
-        }
+      if (Array.isArray(updatedStaff)) {
+        setStaffList(updatedStaff);
       }
       notifyMultiDeviceSync();
       setTimeout(() => setStaffActionSuccess(null), 4000);
     } catch (err: any) {
-      setStaffActionError(err.message || 'Gagal menambahkan akun guru.');
-      setTimeout(() => setStaffActionError(null), 4000);
+      const msg = err.message || 'Gagal menambahkan akun.';
+      setStaffActionError(msg);
+      showError('Gagal Menambahkan Akun', msg);
+      setTimeout(() => setStaffActionError(null), 5000);
+    } finally {
+      setCreatingTeacherLoading(false);
     }
   };
 
@@ -525,8 +553,22 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
     if (!editingTeacher) return;
 
     try {
-      const res = await api.updateTeacher(editingTeacher.id, editTeacherForm);
-      setStaffActionSuccess(res.message || 'Akun guru berhasil diperbarui.');
+      const payload: any = {
+        name: editTeacherForm.name.trim(),
+        jabatan: editTeacherForm.jabatan.trim(),
+        email: editTeacherForm.email.trim(),
+        phone: editTeacherForm.phone.trim(),
+        role: editTeacherForm.role,
+        isActive: editTeacherForm.isActive,
+        expectedUpdatedAt: editingTeacher.updatedAt,
+      };
+      if (editTeacherForm.password && editTeacherForm.password.trim().length >= 6) {
+        payload.password = editTeacherForm.password.trim();
+      }
+      const res = await api.updateTeacher(editingTeacher.id, payload);
+      const msg = res.message || 'Informasi akun berhasil diperbarui & tersinkron.';
+      setStaffActionSuccess(msg);
+      showSuccess('Akun Diperbarui', msg);
       setShowEditTeacherModal(false);
       setEditingTeacher(null);
       const updatedStaff = await api.getStaff();
@@ -534,24 +576,25 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       notifyMultiDeviceSync();
       setTimeout(() => setStaffActionSuccess(null), 4000);
     } catch (err: any) {
-      setStaffActionError(err.message || 'Gagal memperbarui data guru.');
+      const msg = err.message || 'Gagal memperbarui data akun.';
+      setStaffActionError(msg);
+      showError('Gagal Memperbarui Akun', msg);
       setTimeout(() => setStaffActionError(null), 4000);
     }
   };
 
-  const handleDeleteTeacher = async (id: string, name: string) => {
-    if (!confirm(`Hapus akun ${name}? Tindakan ini akan menghapus akses login guru tersebut.`)) return;
-
-    try {
-      const res = await api.deleteTeacher(id);
-      setStaffActionSuccess(res.message || `Akun ${name} berhasil dihapus.`);
-      setStaffList((prev) => prev.filter((s) => s.id !== id));
-      notifyMultiDeviceSync();
-      setTimeout(() => setStaffActionSuccess(null), 4000);
-    } catch (err: any) {
-      setStaffActionError(err.message || 'Gagal menghapus akun.');
-      setTimeout(() => setStaffActionError(null), 4000);
-    }
+  const handleDeleteTeacher = (id: string, name: string) => {
+    setPendingDeleteModal({
+      title: 'Hapus Akun Guru / Staf Permanen?',
+      itemName: name,
+      message: 'Apakah Anda yakin ingin menghapus data ini secara permanen?',
+      onExecute: async () => {
+        const res = await api.deleteTeacher(id);
+        setStaffList((prev) => prev.filter((s) => s.id !== id));
+        showSuccess('Akun Dihapus Permanen', res.message || `Akun ${name} telah dihapus selamanya.`);
+        notifyMultiDeviceSync();
+      },
+    });
   };
 
   // EXPORT EXCEL HANDLER: CRITICAL PRIVACY (NO ID / NO USERNAME)
@@ -576,7 +619,7 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       });
 
       if (filtered.length === 0) {
-        alert('Tidak ada data absensi yang sesuai dengan filter yang dipilih.');
+        showError('Data Kosong', 'Tidak ada data absensi yang sesuai dengan filter yang dipilih.');
         setBackupExporting(false);
         return;
       }
@@ -609,8 +652,9 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       XLSX.writeFile(wb, filename);
 
       setBackupSuccessMessage(`Berhasil mengekspor ${rows.length} data absensi ke file ${filename}. Kolom Username dan ID Siswa dihilangkan sesuai ketentuan privasi.`);
+      showSuccess('Ekspor Berhasil', `${rows.length} data absensi diekspor ke ${filename}.`);
     } catch (err: any) {
-      alert(err.message || 'Gagal mengekspor file Excel.');
+      showError('Gagal Ekspor Excel', err.message || 'Gagal mengekspor file Excel.');
     } finally {
       setBackupExporting(false);
     }
@@ -671,6 +715,7 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       setActivityLogs(logs || []);
       setFeedPosts(posts || []);
       setAllStories(stories || []);
+      await loadAdminNotifications();
     } catch (err) {
       console.error('Failed to load admin data:', err);
     }
@@ -678,7 +723,7 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
 
   const handleRespondSupport = async (reportId: string) => {
     if (!supportTechnicalNote.trim()) {
-      alert('Masukkan catatan teknis perbaikan sistem');
+      showError('Validasi Gagal', 'Masukkan catatan teknis perbaikan sistem.');
       return;
     }
     setSupportProcessing(true);
@@ -690,9 +735,9 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       setSupportReports(prev => prev.map(r => r.id === reportId ? updated : r));
       setRespondingSupportId(null);
       setSupportTechnicalNote('');
-      alert('Tanggapan teknis perbaikan sistem berhasil disimpan!');
+      showSuccess('Tanggapan Disimpan', 'Tanggapan teknis perbaikan sistem berhasil disimpan!');
     } catch (err: any) {
-      alert('Terjadi kesalahan: ' + err.message);
+      showError('Gagal Menyimpan', err.message || 'Terjadi kesalahan saat menyimpan tanggapan.');
     } finally {
       setSupportProcessing(false);
     }
@@ -711,24 +756,61 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
     }
   };
 
+  const loadAdminNotifications = async () => {
+    try {
+      const all = await api.getNotifications();
+      if (Array.isArray(all)) {
+        const adminOnly = all.filter(
+          (n) => n.type === 'admin_account_event' || n.targetRole === 'admin'
+        );
+        const seen = new Set<string>();
+        const deduped = adminOnly.filter((n) => {
+          const key = n.dedupeKey || n.id;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setAdminNotifications(deduped);
+      }
+    } catch (_) {}
+  };
+
+  const handleMarkAdminNotifRead = async (notifId: string) => {
+    setAdminNotifications((prev) =>
+      prev.map((n) => (n.id === notifId ? { ...n, isRead: true } : n))
+    );
+    try {
+      await api.markNotificationRead(notifId);
+      window.dispatchEvent(new CustomEvent('tamvesta_refresh_notifications'));
+    } catch (_) {}
+  };
+
+  const handleMarkAllAdminNotifsRead = async () => {
+    setAdminNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    try {
+      await api.markAllNotificationsRead();
+      window.dispatchEvent(new CustomEvent('tamvesta_refresh_notifications'));
+    } catch (_) {}
+  };
+
   const syncDataSilently = async () => {
     try {
       setIsSyncingMultiDevice(true);
       const [stu, subs, anns, qzs, atts, evs, staff, reqs, cls, sch, devs, logs, posts, stories] = await Promise.all([
-        api.getStudents(),
-        api.getSubjects(),
-        api.getAnnouncements(),
-        api.getQuizzes(),
-        api.getQuizAttempts(),
-        api.getAttendanceEvents(),
-        api.getStaff(),
-        api.getPasswordResetRequests(),
-        api.getSchoolClasses().catch(() => []),
-        api.getSchedules().catch(() => []),
-        api.getAllAdminDeviceSessions().catch(() => []),
-        api.getActivityLogs().catch(() => []),
-        api.getPosts().catch(() => []),
-        api.getStories().catch(() => []),
+        api.getStudents().catch(() => null),
+        api.getSubjects().catch(() => null),
+        api.getAnnouncements().catch(() => null),
+        api.getQuizzes().catch(() => null),
+        api.getQuizAttempts().catch(() => null),
+        api.getAttendanceEvents().catch(() => null),
+        api.getStaff().catch(() => null),
+        api.getPasswordResetRequests().catch(() => null),
+        api.getSchoolClasses().catch(() => null),
+        api.getSchedules().catch(() => null),
+        api.getAllAdminDeviceSessions().catch(() => null),
+        api.getActivityLogs().catch(() => null),
+        api.getPosts().catch(() => null),
+        api.getStories().catch(() => null),
       ]);
 
       if (Array.isArray(stu)) setStudents(stu);
@@ -746,6 +828,7 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       if (Array.isArray(posts)) setFeedPosts(posts);
       if (Array.isArray(stories)) setAllStories(stories);
 
+      await loadAdminNotifications();
       setLastSyncTime(new Date());
     } catch (err) {
       console.debug('Background multi-device auto-sync skipped:', err);
@@ -906,7 +989,7 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
         <div class="header-kop">
           <h1 class="inst-title">YAYASAN PERSATUAN PERGURUAN TAMANSISWA</h1>
           <h2 class="inst-sub">CABANG BATAM — KOTA BATAM</h2>
-          <p class="inst-address">Alamat: Jl. Tamansiswa No. 1, Batam, Kepulauan Riau • Telp: (0778) 462155 • Portal: https://apkupdate-indol.vercel.app</p>
+          <p class="inst-address">Alamat: Jl. Tamansiswa No. 1, Batam, Kepulauan Riau • Telp: (0778) 462155 • Portal: https://tamvesta.vercel.app</p>
           <div style="margin-top: 10px;">
             <span class="doc-badge">DAFTAR KREDENSIAL RESMI AKUN GURU & TENAGA KEPENDIDIKAN</span>
           </div>
@@ -992,20 +1075,22 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
   useEffect(() => {
     loadAllData();
 
-    // Multi-Device Auto-Sync: Poll every 5 seconds so any changes made on other devices
-    // appear automatically without needing manual page reload
+    // Backup polling interval (15s) alongside real-time SSE push stream
     const intervalId = setInterval(() => {
       syncDataSilently();
-    }, 5000);
+    }, 15000);
 
-    // Immediate sync when tab becomes visible or gains window focus
+    // Real-time event listener from SSE/WebSync stream
+    const handleRealtimeEvent = () => {
+      syncDataSilently();
+    };
+
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === 'visible') {
         syncDataSilently();
       }
     };
 
-    // BroadcastChannel for instant zero-latency multi-window/multi-tab updates on same device
     let channel: BroadcastChannel | null = null;
     try {
       channel = new BroadcastChannel('tamvesta_admin_sync');
@@ -1017,11 +1102,17 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       };
     } catch (_) {}
 
+    window.addEventListener('tamvesta_realtime_sync', handleRealtimeEvent);
+    window.addEventListener('tamvesta_admin_notification', handleRealtimeEvent);
+    window.addEventListener('tamvesta_refresh_notifications', loadAdminNotifications);
     window.addEventListener('visibilitychange', handleVisibilityOrFocus);
     window.addEventListener('focus', handleVisibilityOrFocus);
 
     return () => {
       clearInterval(intervalId);
+      window.removeEventListener('tamvesta_realtime_sync', handleRealtimeEvent);
+      window.removeEventListener('tamvesta_admin_notification', handleRealtimeEvent);
+      window.removeEventListener('tamvesta_refresh_notifications', loadAdminNotifications);
       window.removeEventListener('visibilitychange', handleVisibilityOrFocus);
       window.removeEventListener('focus', handleVisibilityOrFocus);
       if (channel) {
@@ -1105,6 +1196,8 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
     setEditFormUsername(stu.username);
     setEditFormPhone(stu.phone || '');
     setEditFormEmail(stu.email || '');
+    setEditFormPassword('');
+    setEditFormActive(stu.isActive !== false);
   };
 
   const handleSaveEditStudent = async (e: React.FormEvent) => {
@@ -1119,14 +1212,17 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
         username: editFormUsername.trim().toLowerCase(),
         phone: editFormPhone.trim() || undefined,
         email: editFormEmail.trim() || undefined,
+        isActive: editFormActive,
+        ...(editFormPassword.trim() ? { password: editFormPassword.trim() } : {}),
+        expectedUpdatedAt: editingStudent.updatedAt,
       });
-      alert('Data profil siswa berhasil diperbarui!');
+      showSuccess('Profil Siswa Diperbarui', 'Data profil & akses login siswa berhasil diperbarui dan tersinkronisasi!');
       setEditingStudent(null);
       const updated = await api.getStudents();
       setStudents(updated);
       notifyMultiDeviceSync();
     } catch (err: any) {
-      alert(err.message || 'Gagal memperbarui data siswa.');
+      showError('Gagal Memperbarui', err.message || 'Gagal memperbarui data siswa.');
     } finally {
       setEditStudentLoading(false);
     }
@@ -1206,18 +1302,19 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
   const handleConfirmDeleteStudent = async () => {
     if (!deletingStudent) return;
     const targetId = deletingStudent.id;
+    const deletedName = deletingStudent.name;
+    const deletedUser = deletingStudent.username;
     setDeleteLoading(true);
     try {
       await api.deleteStudent(targetId);
-      // Kurangi langsung dari state agar berkurang selamanya secara instan
       setStudents((prev) => prev.filter((s) => s.id !== targetId));
-      alert(`Akun siswa "${deletingStudent.name}" (@${deletingStudent.username}) berhasil dihapus selamanya dari database.`);
+      showSuccess('Akun Siswa Dihapus Permanen', `Akun "${deletedName}" (@${deletedUser}) telah dihapus selamanya dari database.`);
       setDeletingStudent(null);
       const updated = await api.getStudents();
       setStudents(updated);
       notifyMultiDeviceSync();
     } catch (err: any) {
-      alert(err.message || 'Gagal menghapus akun siswa.');
+      showError('Gagal Menghapus Siswa', err.message || 'Gagal menghapus akun siswa.');
     } finally {
       setDeleteLoading(false);
     }
@@ -1228,7 +1325,6 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
     try {
       const res = await api.processPasswordResetRequest(tkt.id, 'approved', 'Telah Disetujui');
 
-      // Update state seketika agar riwayat langsung berubah menjadi Telah Disetujui
       setResetRequests((prev) =>
         prev.map((r) =>
           r.id === tkt.id
@@ -1247,9 +1343,9 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
         userName: `${tkt.name} (@${tkt.username})`,
       }).catch(() => {});
 
-      alert(res.message || `Tiket pengajuan ganti sandi ${tkt.name} telah disetujui. Password baru siswa otomatis aktif!`);
+      showSuccess('Tiket Disetujui (ACC)', res.message || `Tiket ganti sandi ${tkt.name} disetujui.`);
     } catch (err: any) {
-      alert(err.message || 'Gagal memproses tiket.');
+      showError('Gagal Memproses Tiket', err.message || 'Gagal memproses tiket.');
     } finally {
       setTicketProcessing(false);
     }
@@ -1261,14 +1357,14 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
     setTicketProcessing(true);
     try {
       const res = await api.processPasswordResetRequest(rejectingTicket.id, 'rejected', rejectReasonText.trim() || 'Alasan administratif');
-      alert(res.message || 'Pengajuan ganti sandi telah ditolak.');
+      showInfo('Tiket Ditolak', res.message || 'Pengajuan ganti sandi telah ditolak.');
       setRejectingTicket(null);
       setRejectReasonText('');
       const updatedReqs = await api.getPasswordResetRequests();
       setResetRequests(updatedReqs || []);
       notifyMultiDeviceSync();
     } catch (err: any) {
-      alert(err.message || 'Gagal menolak tiket.');
+      showError('Gagal Menolak Tiket', err.message || 'Gagal menolak tiket.');
     } finally {
       setTicketProcessing(false);
     }
@@ -1288,36 +1384,40 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       setStudents((prev) =>
         prev.map((s) => (s.id === student.id ? { ...s, isActive: res.isActive } : s))
       );
+      showSuccess('Status Akun Diperbarui', `${student.name} kini ${res.isActive ? 'AKTIF' : 'NONAKTIF'}.`);
       notifyMultiDeviceSync();
     } catch (err: any) {
-      alert(err.message || 'Gagal mengubah status akun.');
+      showError('Gagal Mengubah Status', err.message || 'Gagal mengubah status akun.');
     }
   };
 
   const handleApproveStudent = async (student: User) => {
     try {
-      const res = await api.approveStudentRegistration(student.id);
+      await api.approveStudentRegistration(student.id);
       setStudents((prev) =>
         prev.map((s) => (s.id === student.id ? { ...s, isActive: true, registrationStatus: 'approved' } : s))
       );
-      alert(`Pendaftaran siswa "${student.name}" berhasil di-ACC! Akun kini aktif dan dapat langsung masuk ke aplikasi.`);
+      showSuccess('Pendaftaran Disetujui (ACC)', `Akun "${student.name}" kini aktif dan siap digunakan login.`);
       notifyMultiDeviceSync();
     } catch (err: any) {
-      alert(err.message || 'Gagal menyetujui pendaftaran siswa.');
+      showError('Gagal ACC Pendaftaran', err.message || 'Gagal menyetujui pendaftaran siswa.');
     }
   };
 
-  const handleRejectStudent = async (student: User) => {
-    if (!confirm(`Apakah Anda yakin ingin menolak pendaftaran siswa "${student.name}"?`)) return;
-    try {
-      await api.rejectStudentRegistration(student.id);
-      setStudents((prev) =>
-        prev.map((s) => (s.id === student.id ? { ...s, isActive: false, registrationStatus: 'rejected' } : s))
-      );
-      notifyMultiDeviceSync();
-    } catch (err: any) {
-      alert(err.message || 'Gagal menolak pendaftaran siswa.');
-    }
+  const handleRejectStudent = (student: User) => {
+    setPendingDeleteModal({
+      title: 'Tolak Pendaftaran Calon Siswa?',
+      itemName: `${student.name} (@${student.username})`,
+      message: `Apakah Anda yakin ingin menolak pendaftaran siswa "${student.name}" secara permanen?`,
+      onExecute: async () => {
+        await api.rejectStudentRegistration(student.id);
+        setStudents((prev) =>
+          prev.map((s) => (s.id === student.id ? { ...s, isActive: false, registrationStatus: 'rejected' } : s))
+        );
+        showInfo('Pendaftaran Ditolak', `Pendaftaran ${student.name} telah ditolak.`);
+        notifyMultiDeviceSync();
+      },
+    });
   };
 
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
@@ -1353,20 +1453,25 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       const updated = await api.getSubjects();
       setSubjects(updated);
       notifyMultiDeviceSync();
+      showSuccess('Mata Pelajaran Disimpan', 'Data mata pelajaran tersinkron ke seluruh perangkat.');
     } catch (err: any) {
-      alert(err.message || 'Gagal menyimpan mata pelajaran.');
+      showError('Gagal Menyimpan Mapel', err.message || 'Gagal menyimpan mata pelajaran.');
     }
   };
 
-  const handleDeleteSubject = async (id: string) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus mata pelajaran ini?')) return;
-    try {
-      await api.deleteSubject(id);
-      setSubjects((prev) => prev.filter((s) => s.id !== id));
-      notifyMultiDeviceSync();
-    } catch (err: any) {
-      alert(err.message || 'Gagal menghapus mata pelajaran.');
-    }
+  const handleDeleteSubject = (id: string) => {
+    const target = subjects.find((s) => s.id === id);
+    setPendingDeleteModal({
+      title: 'Hapus Mata Pelajaran Permanen?',
+      itemName: target ? `${target.name} (${target.code})` : id,
+      message: 'Apakah Anda yakin ingin menghapus data ini secara permanen?',
+      onExecute: async () => {
+        await api.deleteSubject(id);
+        setSubjects((prev) => prev.filter((s) => s.id !== id));
+        showSuccess('Mata Pelajaran Dihapus', 'Mata pelajaran dihapus permanen dari database.');
+        notifyMultiDeviceSync();
+      },
+    });
   };
 
   // --- 3. BOOK ACTIONS ---
@@ -1382,19 +1487,24 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       setEditingBook(null);
       const updated = await api.getBooks();
       setBooks(updated);
+      showSuccess('Buku Digital Disimpan', 'Data buku digital berhasil disimpan.');
     } catch (err: any) {
-      alert(err.message || 'Gagal menyimpan buku digital.');
+      showError('Gagal Menyimpan Buku', err.message || 'Gagal menyimpan buku digital.');
     }
   };
 
-  const handleDeleteBook = async (id: string) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus buku ini?')) return;
-    try {
-      await api.deleteBook(id);
-      setBooks((prev) => prev.filter((b) => b.id !== id));
-    } catch (err: any) {
-      alert(err.message || 'Gagal menghapus buku.');
-    }
+  const handleDeleteBook = (id: string) => {
+    const target = books.find((b) => b.id === id);
+    setPendingDeleteModal({
+      title: 'Hapus Buku Digital Permanen?',
+      itemName: target ? target.title : id,
+      message: 'Apakah Anda yakin ingin menghapus data ini secara permanen?',
+      onExecute: async () => {
+        await api.deleteBook(id);
+        setBooks((prev) => prev.filter((b) => b.id !== id));
+        showSuccess('Buku Dihapus', 'Buku berhasil dihapus permanen dari database.');
+      },
+    });
   };
 
   // --- 4. ANNOUNCEMENT ACTIONS ---
@@ -1410,19 +1520,24 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       setEditingAnn(null);
       const updated = await api.getAnnouncements();
       setAnnouncements(updated);
+      showSuccess('Pengumuman Disimpan', 'Pengumuman diterbitkan & tersinkron real-time ke seluruh portal.');
     } catch (err: any) {
-      alert(err.message || 'Gagal menyimpan pengumuman.');
+      showError('Gagal Menyimpan Pengumuman', err.message || 'Gagal menyimpan pengumuman.');
     }
   };
 
-  const handleDeleteAnn = async (id: string) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus pengumuman ini?')) return;
-    try {
-      await api.deleteAnnouncement(id);
-      setAnnouncements((prev) => prev.filter((a) => a.id !== id));
-    } catch (err: any) {
-      alert(err.message || 'Gagal menghapus pengumuman.');
-    }
+  const handleDeleteAnn = (id: string) => {
+    const target = announcements.find((a) => a.id === id);
+    setPendingDeleteModal({
+      title: 'Hapus Pengumuman Permanen?',
+      itemName: target ? target.title : id,
+      message: 'Apakah Anda yakin ingin menghapus data ini secara permanen?',
+      onExecute: async () => {
+        await api.deleteAnnouncement(id);
+        setAnnouncements((prev) => prev.filter((a) => a.id !== id));
+        showSuccess('Pengumuman Dihapus', 'Pengumuman telah dihapus permanen dari seluruh portal.');
+      },
+    });
   };
 
   // --- 5. QUIZ ACTIONS ---
@@ -1441,8 +1556,9 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       setShowQuizModal(false);
       const updated = await api.getQuizzes();
       setQuizzes(updated);
+      showSuccess('Quiz Disimpan', 'Quiz berhasil disimpan ke database utama.');
     } catch (err: any) {
-      alert(err.message || 'Gagal menyimpan quiz.');
+      showError('Gagal Menyimpan Quiz', err.message || 'Gagal menyimpan quiz.');
     }
   };
 
@@ -1465,8 +1581,9 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       await api.deleteQuiz(id);
       setQuizzes((prev) => prev.filter((q) => q.id !== id));
       setQuizAttempts((prev) => prev.filter((a) => a.quizId !== id));
+      showSuccess('Quiz Dihapus Permanen', 'Quiz dan seluruh nilainya telah dihapus selamanya.');
     } catch (err: any) {
-      alert(err.message || 'Gagal menghapus quiz.');
+      showError('Gagal Menghapus Quiz', err.message || 'Gagal menghapus quiz.');
     }
   };
 
@@ -1478,8 +1595,9 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       setShowEventModal(false);
       const updated = await api.getAttendanceEvents();
       setEvents(updated);
+      showSuccess('Kegiatan Dibuat', 'Event absensi QR baru berhasil dibuat.');
     } catch (err: any) {
-      alert(err.message || 'Gagal membuat kegiatan absensi.');
+      showError('Gagal Membuat Kegiatan', err.message || 'Gagal membuat kegiatan absensi.');
     }
   };
 
@@ -1489,19 +1607,24 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       setEvents((prev) =>
         prev.map((e) => (e.id === id ? { ...e, isOpen: res.isOpen } : e))
       );
+      showSuccess('Sesi Diperbarui', `Sesi absensi kini ${res.isOpen ? 'DIBUKA' : 'DITUTUP'}.`);
     } catch (err: any) {
-      alert(err.message || 'Gagal mengubah status sesi.');
+      showError('Gagal Mengubah Sesi', err.message || 'Gagal mengubah status sesi.');
     }
   };
 
-  const handleDeleteEvent = async (id: string) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus kegiatan ini beserta riwayat absensinya?')) return;
-    try {
-      await api.deleteAttendanceEvent(id);
-      setEvents((prev) => prev.filter((e) => e.id !== id));
-    } catch (err: any) {
-      alert(err.message || 'Gagal menghapus kegiatan.');
-    }
+  const handleDeleteEvent = (id: string) => {
+    const target = events.find((e) => e.id === id);
+    setPendingDeleteModal({
+      title: 'Hapus Kegiatan Absensi Permanen?',
+      itemName: target ? target.name : id,
+      message: 'Apakah Anda yakin ingin menghapus data ini secara permanen?',
+      onExecute: async () => {
+        await api.deleteAttendanceEvent(id);
+        setEvents((prev) => prev.filter((e) => e.id !== id));
+        showSuccess('Kegiatan Dihapus', 'Kegiatan absensi berhasil dihapus permanen.');
+      },
+    });
   };
 
   // --- 7. STUDENT CONTACT ACTIONS ---
@@ -1516,18 +1639,19 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       .map((s) => s.phone?.trim())
       .filter((p): p is string => Boolean(p && p.length >= 7));
     if (validPhones.length === 0) {
-      alert('Tidak ada nomor WhatsApp yang tersedia pada daftar kontak saat ini.');
+      showError('Kontak Kosong', 'Tidak ada nomor WhatsApp yang tersedia pada daftar kontak saat ini.');
       return;
     }
     const joined = validPhones.join(', ');
     navigator.clipboard.writeText(joined);
     setCopiedItem('all_phones');
+    showSuccess('Nomor Disalin', `${validPhones.length} nomor WhatsApp berhasil disalin.`);
     setTimeout(() => setCopiedItem(null), 3000);
   };
 
   const handleExportContacts = () => {
     if (filteredContacts.length === 0) {
-      alert('Tidak ada data kontak siswa yang sesuai filter untuk diekspor.');
+      showError('Data Kosong', 'Tidak ada data kontak siswa yang sesuai filter untuk diekspor.');
       return;
     }
     const data = filteredContacts.map((s, idx) => ({
@@ -1572,9 +1696,9 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       );
       setEditingContactStudent(null);
       notifyMultiDeviceSync();
-      alert('Kontak siswa berhasil diperbarui.');
+      showSuccess('Kontak Disimpan', 'Kontak siswa berhasil diperbarui dan tersinkronisasi.');
     } catch (err: any) {
-      alert(err.message || 'Gagal menyimpan kontak siswa.');
+      showError('Gagal Menyimpan Kontak', err.message || 'Gagal menyimpan kontak siswa.');
     } finally {
       setSavingContact(false);
     }
@@ -1647,242 +1771,335 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
   });
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-5">
       {/* Top Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 rounded-3xl p-6 sm:p-8 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6 border border-slate-700/50">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-bold tracking-wide">
-              ADMINISTRATOR UTAMA
-            </span>
-            <span className="text-xs text-slate-400">TAMANSISWA BATAM</span>
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 rounded-3xl p-4 sm:p-7 text-white shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4 border border-slate-700/50">
+        <div className="flex items-start gap-3">
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(true)}
+            className="lg:hidden p-2.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white border border-white/15 transition shrink-0 mt-0.5"
+            aria-label="Buka menu navigasi Admin"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[11px] font-bold tracking-wide">
+                ADMINISTRATOR UTAMA
+              </span>
+              <span className="text-xs text-slate-400">TAMANSISWA BATAM</span>
+            </div>
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-black mt-1 truncate">Dashboard Kontrol Admin</h1>
+            <p className="text-xs sm:text-sm text-slate-300 mt-0.5 line-clamp-2">
+              Kelola akun siswa, guru & staf, rombel kelas, jadwal pelajaran, pesan DM, pengumuman, quiz, dan absensi QR
+            </p>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black mt-1">Dashboard Kontrol Admin</h1>
-          <p className="text-xs sm:text-sm text-slate-300 mt-0.5">
-            Kelola akun siswa, guru & staf, rombel kelas, jadwal pelajaran, pesan DM, pengumuman, quiz, dan absensi QR
-          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 px-3.5 py-2.5 bg-emerald-950/70 border border-emerald-500/40 rounded-2xl text-[11px] font-bold text-emerald-200 backdrop-blur-sm shadow-inner">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 px-3 py-2 bg-emerald-950/70 border border-emerald-500/40 rounded-2xl text-[11px] font-bold text-emerald-200 backdrop-blur-sm shadow-inner">
             <span className={`w-2.5 h-2.5 rounded-full ${isSyncingMultiDevice ? 'bg-amber-400 animate-spin' : 'bg-emerald-400 animate-pulse'}`} />
-            <span className="hidden sm:inline">Sinkronisasi Multi-Device:</span>
+            <span className="hidden sm:inline">Sync Multi-Device:</span>
             <span className="text-emerald-300 font-mono">Aktif ({lastSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })})</span>
           </div>
 
           <button
-            onClick={() => setShowBackupModal(true)}
-            className="flex items-center gap-2 px-4 py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-2xl font-black text-xs shadow-lg shadow-teal-600/30 transition active:scale-95"
-            title="Unduh backup data absensi dalam format file Excel (.xlsx)"
+            type="button"
+            onClick={() => setShowAdminNotifDrawer(true)}
+            className="relative flex items-center gap-2 px-3.5 py-2.5 bg-slate-800/90 hover:bg-slate-700 text-amber-300 border border-amber-400/30 rounded-2xl font-black text-xs shadow-md transition active:scale-95"
+            title="Notifikasi Khusus Admin Portal Dashboard"
           >
-            <FileSpreadsheet className="w-4 h-4 text-teal-200" />
-            <span>Backup Absensi (.xlsx)</span>
+            <Bell className="w-4 h-4" />
+            <span className="hidden sm:inline">Notifikasi Admin</span>
+            {adminNotifications.filter((n) => !n.isRead).length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-black animate-pulse">
+                {adminNotifications.filter((n) => !n.isRead).length}
+              </span>
+            )}
           </button>
 
           <button
-            onClick={onOpenScanner}
-            className="flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xs sm:text-sm shadow-lg shadow-emerald-600/30 transition active:scale-95 group"
+            type="button"
+            onClick={() => setShowBackupModal(true)}
+            className="flex items-center gap-2 px-3.5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-2xl font-black text-xs shadow-lg shadow-teal-600/30 transition active:scale-95"
+            title="Unduh backup data absensi dalam format file Excel (.xlsx)"
           >
-            <ScanLine className="w-5 h-5 text-emerald-200 group-hover:scale-110 transition-transform" />
-            <span>Buka Website Scanner Laptop</span>
+            <FileSpreadsheet className="w-4 h-4 text-teal-200" />
+            <span className="hidden sm:inline">Backup Absensi (.xlsx)</span>
+            <span className="sm:hidden">Backup</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenScanner}
+            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xs shadow-lg shadow-emerald-600/30 transition active:scale-95 group"
+          >
+            <ScanLine className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-200 group-hover:scale-110 transition-transform" />
+            <span className="hidden sm:inline">Buka Scanner QR</span>
+            <span className="sm:hidden">Scanner</span>
           </button>
         </div>
       </div>
 
-      {/* Admin Tabs */}
-      <div className="bg-white rounded-2xl p-2 shadow-sm border border-slate-200 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-9 gap-1.5">
-        <button
-          onClick={() => setActiveTab('overview')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'overview' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
-          }`}
+      {/* Responsive Mobile Navigation Drawer (< lg) */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 z-[90] lg:hidden bg-slate-950/60 backdrop-blur-xs flex"
+          onClick={() => setMobileMenuOpen(false)}
         >
-          <LayoutDashboard className="w-4 h-4 shrink-0" />
-          <span className="truncate">Dashboard</span>
-        </button>
+          <div
+            className="w-72 max-w-[85vw] bg-white h-full shadow-2xl border-r border-slate-200 flex flex-col drawer-enter"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white">
+              <div>
+                <h2 className="font-black text-sm">Menu Admin TAMVESTA</h2>
+                <p className="text-[11px] text-emerald-300">Navigasi Portal Terpadu</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+              {[
+                { id: 'overview' as AdminTab, label: 'Dashboard Utama', icon: LayoutDashboard },
+                { id: 'students' as AdminTab, label: `Akun Siswa (${students.length})`, icon: Users },
+                { id: 'staff' as AdminTab, label: `Guru & Staf (${staffList.length})`, icon: GraduationCap },
+                { id: 'classes' as AdminTab, label: `Kelas (${schoolClasses.length})`, icon: Layers },
+                { id: 'schedules' as AdminTab, label: `Jadwal (${schedules.length})`, icon: Calendar },
+                { id: 'announcements' as AdminTab, label: 'Pengumuman', icon: Bell },
+                { id: 'subjects' as AdminTab, label: 'Mata Pelajaran', icon: BookOpen },
+                { id: 'quizzes' as AdminTab, label: 'Quiz & Nilai', icon: HelpCircle },
+                { id: 'events' as AdminTab, label: 'Absensi QR', icon: QrCode },
+                { id: 'contacts' as AdminTab, label: 'Kontak Siswa', icon: Phone },
+                { id: 'dm' as AdminTab, label: 'Pesan DM', icon: MessageCircle },
+                { id: 'social_monitor' as AdminTab, label: 'Feed & Story', icon: Sparkles },
+                { id: 'devices' as AdminTab, label: `Perangkat (${deviceSessions.length})`, icon: Smartphone },
+                { id: 'activity_log' as AdminTab, label: 'Riwayat Aktivitas', icon: History },
+                { id: 'tickets' as AdminTab, label: 'Tiket Sandi', icon: Shield, badge: resetRequests.filter((r) => r.status === 'pending').length },
+                { id: 'support_tickets' as AdminTab, label: 'Kendala Sistem', icon: LifeBuoy },
+                { id: 'notifications' as AdminTab, label: 'Siaran Notifikasi', icon: Radio },
+              ].map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveTab(item.id);
+                      setMobileMenuOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition ${
+                      isActive ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5 truncate">
+                      <Icon className="w-4 h-4 shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </span>
+                    {item.badge && item.badge > 0 ? (
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white">
+                        {item.badge}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
-        <button
-          onClick={() => setActiveTab('students')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'students' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
+      {/* Main Responsive Layout: Collapsible Desktop Sidebar + Active Content Area */}
+      <div className="flex flex-col lg:flex-row gap-5 items-start">
+        <aside
+          className={`hidden lg:flex flex-col shrink-0 bg-white rounded-3xl border border-slate-200 shadow-xs p-2.5 sticky top-20 transition-all duration-200 ${
+            sidebarCollapsed ? 'w-16' : 'w-60'
           }`}
         >
-          <Users className="w-4 h-4 shrink-0" />
-          <span className="truncate">Akun Siswa</span>
-        </button>
+          <div className="flex items-center justify-between px-2 py-1.5 mb-2 border-b border-slate-100">
+            {!sidebarCollapsed && (
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
+                Navigasi Admin
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed((c) => !c)}
+              className="p-1.5 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition ml-auto"
+              title={sidebarCollapsed ? 'Perlebar Sidebar' : 'Kecilkan Sidebar'}
+            >
+              {sidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+            </button>
+          </div>
 
-        <button
-          onClick={() => setActiveTab('staff')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'staff' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <GraduationCap className="w-4 h-4 shrink-0" />
-          <span className="truncate">Guru & Staf</span>
-          <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9px] bg-emerald-100 text-emerald-800">
-            {staffList.length}
-          </span>
-        </button>
+          <nav className="space-y-1 max-h-[calc(100vh-11rem)] overflow-y-auto no-scrollbar">
+            {[
+              { id: 'overview' as AdminTab, label: 'Dashboard', icon: LayoutDashboard },
+              { id: 'students' as AdminTab, label: 'Akun Siswa', icon: Users, count: students.length },
+              { id: 'staff' as AdminTab, label: 'Guru & Staf', icon: GraduationCap, count: staffList.length },
+              { id: 'classes' as AdminTab, label: 'Kelas', icon: Layers, count: schoolClasses.length },
+              { id: 'schedules' as AdminTab, label: 'Jadwal', icon: Calendar, count: schedules.length },
+              { id: 'announcements' as AdminTab, label: 'Pengumuman', icon: Bell },
+              { id: 'subjects' as AdminTab, label: 'Mata Pelajaran', icon: BookOpen },
+              { id: 'quizzes' as AdminTab, label: 'Quiz & Nilai', icon: HelpCircle },
+              { id: 'events' as AdminTab, label: 'Absensi QR', icon: QrCode },
+              { id: 'contacts' as AdminTab, label: 'Kontak Siswa', icon: Phone },
+              { id: 'dm' as AdminTab, label: 'Pesan DM', icon: MessageCircle },
+              { id: 'social_monitor' as AdminTab, label: 'Feed & Story', icon: Sparkles },
+              { id: 'devices' as AdminTab, label: 'Perangkat', icon: Smartphone, count: deviceSessions.length },
+              { id: 'activity_log' as AdminTab, label: 'Aktivitas', icon: History },
+              { id: 'tickets' as AdminTab, label: 'Tiket Sandi', icon: Shield, badge: resetRequests.filter((r) => r.status === 'pending').length },
+              { id: 'support_tickets' as AdminTab, label: 'Kendala Sistem', icon: LifeBuoy },
+              { id: 'notifications' as AdminTab, label: 'Siaran Notifikasi', icon: Radio },
+            ].map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveTab(item.id)}
+                  title={item.label}
+                  className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    isActive
+                      ? item.id === 'notifications'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : item.id === 'support_tickets'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  }`}
+                >
+                  <span className="flex items-center gap-2 min-w-0">
+                    <Icon className="w-4 h-4 shrink-0" />
+                    {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+                  </span>
+                  {!sidebarCollapsed && item.badge && item.badge > 0 ? (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
+                      {item.badge}
+                    </span>
+                  ) : !sidebarCollapsed && item.count !== undefined ? (
+                    <span
+                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                        isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {item.count}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
 
-        <button
-          onClick={() => setActiveTab('classes')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'classes' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Layers className="w-4 h-4 shrink-0" />
-          <span className="truncate">Kelas</span>
-          <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9px] bg-purple-100 text-purple-800">
-            {schoolClasses.length}
-          </span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('schedules')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'schedules' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Calendar className="w-4 h-4 shrink-0" />
-          <span className="truncate">Jadwal</span>
-          <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9px] bg-emerald-100 text-emerald-800">
-            {schedules.length}
-          </span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('dm')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'dm' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <MessageCircle className="w-4 h-4 shrink-0" />
-          <span className="truncate">Pesan DM</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('social_monitor')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'social_monitor' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Sparkles className="w-4 h-4 shrink-0" />
-          <span className="truncate">Feed & Story</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('devices')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'devices' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Smartphone className="w-4 h-4 shrink-0" />
-          <span className="truncate">Perangkat</span>
-          {deviceSessions.length > 0 && (
-            <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9px] bg-blue-100 text-blue-800">
-              {deviceSessions.length}
+        <div className="flex-1 min-w-0 w-full space-y-6">
+          {/* Quick Mobile Menu Bar (< lg) */}
+          <div className="lg:hidden flex items-center justify-between gap-2 bg-white rounded-2xl p-2.5 border border-slate-200 shadow-xs">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-bold"
+            >
+              <Menu className="w-4 h-4" />
+              <span>Menu Portal</span>
+            </button>
+            <span className="text-xs font-black text-emerald-700 uppercase tracking-wide truncate px-2">
+              {activeTab.replace('_', ' ')}
             </span>
+          </div>
+
+          {/* Dedicated Admin Portal Dashboard Notification Banner / Feed (Admin Only) */}
+          {activeTab === 'overview' && adminNotifications.length > 0 && (
+            <div className="bg-white rounded-3xl border border-emerald-200 p-4 sm:p-5 shadow-xs space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                    <Bell className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                      <span>Notifikasi Khusus Admin Portal Dashboard</span>
+                      {adminNotifications.filter((n) => !n.isRead).length > 0 && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white">
+                          {adminNotifications.filter((n) => !n.isRead).length} Baru
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Pembaruan real-time penambahan & perubahan akun oleh Admin di perangkat lain
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {adminNotifications.some((n) => !n.isRead) && (
+                    <button
+                      type="button"
+                      onClick={handleMarkAllAdminNotifsRead}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition"
+                    >
+                      <CheckCheck className="w-3.5 h-3.5" />
+                      <span>Tandai Semua Dibaca</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminNotifDrawer(true)}
+                    className="px-3 py-1.5 text-[11px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition"
+                  >
+                    Lihat Semua ({adminNotifications.length})
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                {adminNotifications.slice(0, 4).map((notif) => (
+                  <div
+                    key={notif.id}
+                    onClick={() => !notif.isRead && handleMarkAdminNotifRead(notif.id)}
+                    className={`p-3 rounded-2xl border transition cursor-pointer flex items-start gap-3 ${
+                      !notif.isRead
+                        ? 'bg-emerald-50/75 border-emerald-300 shadow-2xs'
+                        : 'bg-slate-50/70 border-slate-200 hover:bg-slate-100/70'
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+                      <UserPlus className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-black text-slate-900 truncate">{notif.title}</span>
+                        {!notif.isRead && (
+                          <span className="w-2 h-2 rounded-full bg-emerald-600 shrink-0" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-600 mt-0.5 line-clamp-2">{notif.message}</p>
+                      <div className="flex items-center justify-between gap-2 mt-1.5">
+                        {notif.statusLabel && (
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
+                            {notif.statusLabel}
+                          </span>
+                        )}
+                        <span className="text-[10px] text-slate-400">
+                          {new Date(notif.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
-        </button>
 
-        <button
-          onClick={() => setActiveTab('activity_log')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'activity_log' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <History className="w-4 h-4 shrink-0" />
-          <span className="truncate">Aktivitas</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('announcements')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'announcements' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Bell className="w-4 h-4 shrink-0" />
-          <span className="truncate">Pengumuman</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('contacts')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'contacts' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Phone className="w-4 h-4 shrink-0" />
-          <span className="truncate">Kontak Siswa</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('subjects')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'subjects' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <BookOpen className="w-4 h-4 shrink-0" />
-          <span className="truncate">Mata Pelajaran</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('quizzes')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'quizzes' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <HelpCircle className="w-4 h-4 shrink-0" />
-          <span className="truncate">Quiz & Nilai</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('events')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'events' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <QrCode className="w-4 h-4 shrink-0" />
-          <span className="truncate">Absensi QR</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('tickets')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'tickets' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Shield className="w-4 h-4 shrink-0" />
-          <span className="truncate">Tiket Sandi</span>
-          {resetRequests.filter((r) => r.status === 'pending').length > 0 && (
-            <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
-              {resetRequests.filter((r) => r.status === 'pending').length}
-            </span>
-          )}
-        </button>
-
-        <button
-          onClick={() => setActiveTab('support_tickets')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'support_tickets' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <LifeBuoy className="w-4 h-4 shrink-0" />
-          <span className="truncate">Kendala Sistem</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('notifications')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-xs font-bold transition ${
-            activeTab === 'notifications' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Bell className="w-4 h-4 shrink-0" />
-          <span className="truncate">Siaran Notifikasi</span>
-        </button>
-      </div>
-
-      {/* TAB 0: DASHBOARD SEKOLAH */}
-      {activeTab === 'overview' && (
+          {/* TAB 0: DASHBOARD SEKOLAH */}
+          {activeTab === 'overview' && (
         <SchoolOverviewTab
           students={students}
           staffList={staffList}
@@ -3160,18 +3377,29 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
                             </div>
                           </td>
                           <td className="p-3.5 text-center">
-                            <button
-                              onClick={() => handleToggleVerified(staff.id)}
-                              className={`p-1.5 rounded-lg border transition inline-flex items-center gap-1 text-[11px] font-bold ${
-                                staff.isVerified
-                                  ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                                  : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100 hover:text-slate-700'
-                              }`}
-                              title={staff.isVerified ? 'Hilangkan centang biru' : 'Berikan centang biru resmi'}
-                            >
-                              <ShieldCheck className={`w-3.5 h-3.5 ${staff.isVerified ? 'text-blue-600 fill-blue-600' : 'text-slate-400'}`} />
-                              <span className="text-[10px]">{staff.isVerified ? 'Verified' : 'Biasa'}</span>
-                            </button>
+                            {staff.role === 'guru' ? (
+                              // Guru: centang PERMANEN — tidak bisa dinonaktifkan
+                              <span
+                                className="p-1.5 rounded-lg border inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-50 text-emerald-700 border-emerald-300 cursor-default"
+                                title="Guru Terverifikasi Permanen (Centang Hijau Resmi)"
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600" />
+                                <span className="text-[10px]">Permanen</span>
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handleToggleVerified(staff.id)}
+                                className={`p-1.5 rounded-lg border transition inline-flex items-center gap-1 text-[11px] font-bold ${
+                                  staff.isVerified
+                                    ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                                    : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100 hover:text-slate-700'
+                                }`}
+                                title={staff.isVerified ? 'Hilangkan centang biru' : 'Berikan centang biru resmi'}
+                              >
+                                <ShieldCheck className={`w-3.5 h-3.5 ${staff.isVerified ? 'text-blue-600 fill-blue-600' : 'text-slate-400'}`} />
+                                <span className="text-[10px]">{staff.isVerified ? 'Verified' : 'Biasa'}</span>
+                              </button>
+                            )}
                           </td>
                           <td className="p-3.5">
                             <span
@@ -3219,11 +3447,14 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
                                     jabatan: staff.jabatan || '',
                                     email: staff.email || '',
                                     phone: staff.phone || '',
+                                    role: staff.role,
+                                    password: '',
+                                    isActive: staff.isActive !== false,
                                   });
                                   setShowEditTeacherModal(true);
                                 }}
                                 className="p-1.5 text-indigo-600 hover:bg-indigo-50 border border-indigo-200 rounded-lg text-[11px] font-bold transition"
-                                title="Edit Akun Guru"
+                                title="Edit Akun Guru & Staf"
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
@@ -4002,6 +4233,8 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
       {activeTab === 'notifications' && (
         <NotificationBroadcastPanel userRole="admin" userName="Administrator" />
       )}
+        </div>
+      </div>
 
       {/* MODAL: RESET PASSWORD SISWA */}
       {resettingStudent && (
@@ -4102,15 +4335,25 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
                     onChange={(e) => setEditFormKelas(e.target.value)}
                     className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
                   >
-                    <option value="Kelas 1">Kelas 1</option>
-                    <option value="Kelas 2">Kelas 2</option>
-                    <option value="Kelas 3">Kelas 3</option>
-                    <option value="Kelas 4">Kelas 4</option>
-                    <option value="Kelas 5">Kelas 5</option>
-                    <option value="Kelas 6">Kelas 6</option>
-                    <option value="Kelas 7">Kelas 7</option>
-                    <option value="Kelas 8">Kelas 8</option>
-                    <option value="Kelas 9">Kelas 9</option>
+                    {Array.from(
+                      new Set([
+                        'Kelas 1',
+                        'Kelas 2',
+                        'Kelas 3',
+                        'Kelas 4',
+                        'Kelas 5',
+                        'Kelas 6',
+                        'Kelas 7',
+                        'Kelas 8',
+                        'Kelas 9',
+                        ...schoolClasses.map((c) => c.name),
+                        ...(editFormKelas ? [editFormKelas] : []),
+                      ])
+                    ).map((cls) => (
+                      <option key={cls} value={cls}>
+                        {cls}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -4124,6 +4367,30 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
                   required
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold"
                 />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Password Baru (Opsional)</label>
+                  <input
+                    type="text"
+                    value={editFormPassword}
+                    onChange={(e) => setEditFormPassword(e.target.value)}
+                    placeholder="Kosongkan jika tetap"
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Status Login Akun</label>
+                  <select
+                    value={editFormActive ? 'active' : 'inactive'}
+                    onChange={(e) => setEditFormActive(e.target.value === 'active')}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold"
+                  >
+                    <option value="active">Aktif (Boleh Login)</option>
+                    <option value="inactive">Nonaktif (Akses Dicabut)</option>
+                  </select>
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
@@ -4246,9 +4513,9 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
             </div>
 
             <div className="text-center space-y-1">
-              <h3 className="font-black text-base text-slate-900">Hapus Akun Siswa?</h3>
+              <h3 className="font-black text-base text-slate-900">Konfirmasi Penghapusan Permanen</h3>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Apakah Anda yakin ingin menghapus akun <strong>{deletingStudent.name}</strong> (@{deletingStudent.username})?
+                Apakah Anda yakin ingin menghapus data ini secara permanen? Akun <strong>{deletingStudent.name}</strong> (@{deletingStudent.username}) akan dihapus dari database utama.
               </p>
               <p className="text-[11px] text-rose-600 font-semibold mt-1">
                 Akun ini tidak dapat digunakan untuk login lagi setelah dihapus.
@@ -4259,7 +4526,7 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
               <button
                 type="button"
                 onClick={() => setDeletingStudent(null)}
-                className="px-5 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
+                className="px-5 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl"
               >
                 Batal
               </button>
@@ -4269,7 +4536,7 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
                 disabled={deleteLoading}
                 className="px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-md transition disabled:opacity-50"
               >
-                {deleteLoading ? 'Menghapus...' : 'Ya, Hapus Akun'}
+                {deleteLoading ? 'Menghapus...' : 'Hapus Permanen'}
               </button>
             </div>
           </div>
@@ -4930,6 +5197,48 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Peran / Hak Akses</label>
+                  <select
+                    value={editTeacherForm.role}
+                    onChange={(e) => setEditTeacherForm({ ...editTeacherForm, role: e.target.value as UserRole })}
+                    disabled={editingTeacher?.username === 'TAMANSISWA'}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold disabled:opacity-60"
+                  >
+                    <option value="guru">Guru</option>
+                    <option value="admin">Administrator</option>
+                    <option value="tata_usaha">Tata Usaha</option>
+                    <option value="kepala_sekolah">Kepala Sekolah</option>
+                    <option value="satpam">Satpam</option>
+                    <option value="panitia">Panitia</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Status Akun</label>
+                  <select
+                    value={editTeacherForm.isActive ? 'active' : 'inactive'}
+                    onChange={(e) => setEditTeacherForm({ ...editTeacherForm, isActive: e.target.value === 'active' })}
+                    disabled={editingTeacher?.username === 'TAMANSISWA'}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold disabled:opacity-60"
+                  >
+                    <option value="active">Aktif (Boleh Login)</option>
+                    <option value="inactive">Dinonaktifkan (Akses Dicabut)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Password Baru (Opsional, Min. 6 Karakter)</label>
+                <input
+                  type="password"
+                  value={editTeacherForm.password}
+                  onChange={(e) => setEditTeacherForm({ ...editTeacherForm, password: e.target.value })}
+                  placeholder="Kosongkan jika tidak ingin mengganti password"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono"
+                />
+              </div>
+
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
@@ -4980,6 +5289,8 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
                     else if (r === 'admin') setNewTeacherForm((prev) => ({ ...prev, jabatan: 'Operator & Dapodik' }));
                     else if (r === 'tata_usaha') setNewTeacherForm((prev) => ({ ...prev, jabatan: 'Staf Tata Usaha' }));
                     else if (r === 'kepala_sekolah') setNewTeacherForm((prev) => ({ ...prev, jabatan: 'Kepala Sekolah' }));
+                    else if (r === 'satpam') setNewTeacherForm((prev) => ({ ...prev, jabatan: 'Satpam Sekolah' }));
+                    else if (r === 'panitia') setNewTeacherForm((prev) => ({ ...prev, jabatan: 'Panitia Kegiatan Sekolah' }));
                   }}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500"
                 >
@@ -4987,6 +5298,8 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
                   <option value="admin">Administrator / Operator Dapodik</option>
                   <option value="tata_usaha">Tata Usaha & Keuangan</option>
                   <option value="kepala_sekolah">Kepala Sekolah / Yayasan</option>
+                  <option value="satpam">Satpam & Keamanan Sekolah</option>
+                  <option value="panitia">Panitia Absensi & Event</option>
                 </select>
               </div>
 
@@ -5077,6 +5390,48 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Peran / Hak Akses</label>
+                  <select
+                    value={editTeacherForm.role}
+                    onChange={(e) => setEditTeacherForm({ ...editTeacherForm, role: e.target.value as UserRole })}
+                    disabled={editingTeacher?.username === 'TAMANSISWA'}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold disabled:opacity-60"
+                  >
+                    <option value="guru">Guru</option>
+                    <option value="admin">Administrator</option>
+                    <option value="tata_usaha">Tata Usaha</option>
+                    <option value="kepala_sekolah">Kepala Sekolah</option>
+                    <option value="satpam">Satpam</option>
+                    <option value="panitia">Panitia</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Status Akun</label>
+                  <select
+                    value={editTeacherForm.isActive ? 'active' : 'inactive'}
+                    onChange={(e) => setEditTeacherForm({ ...editTeacherForm, isActive: e.target.value === 'active' })}
+                    disabled={editingTeacher?.username === 'TAMANSISWA'}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold disabled:opacity-60"
+                  >
+                    <option value="active">Aktif (Boleh Login)</option>
+                    <option value="inactive">Dinonaktifkan (Akses Dicabut)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Password Baru (Opsional, Min. 6 Karakter)</label>
+                <input
+                  type="password"
+                  value={editTeacherForm.password}
+                  onChange={(e) => setEditTeacherForm({ ...editTeacherForm, password: e.target.value })}
+                  placeholder="Kosongkan jika tidak ingin mengganti password"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono"
+                />
+              </div>
+
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
@@ -5087,9 +5442,11 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md transition"
+                  disabled={creatingTeacherLoading}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md transition inline-flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  Simpan & Buat Akun Guru
+                  {creatingTeacherLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{creatingTeacherLoading ? 'Menyimpan...' : 'Simpan & Buat Akun'}</span>
                 </button>
               </div>
             </form>
@@ -5160,6 +5517,48 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl"
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Peran / Hak Akses</label>
+                  <select
+                    value={editTeacherForm.role}
+                    onChange={(e) => setEditTeacherForm({ ...editTeacherForm, role: e.target.value as UserRole })}
+                    disabled={editingTeacher?.username === 'TAMANSISWA'}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold disabled:opacity-60"
+                  >
+                    <option value="guru">Guru</option>
+                    <option value="admin">Administrator</option>
+                    <option value="tata_usaha">Tata Usaha</option>
+                    <option value="kepala_sekolah">Kepala Sekolah</option>
+                    <option value="satpam">Satpam</option>
+                    <option value="panitia">Panitia</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Status Akun</label>
+                  <select
+                    value={editTeacherForm.isActive ? 'active' : 'inactive'}
+                    onChange={(e) => setEditTeacherForm({ ...editTeacherForm, isActive: e.target.value === 'active' })}
+                    disabled={editingTeacher?.username === 'TAMANSISWA'}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold disabled:opacity-60"
+                  >
+                    <option value="active">Aktif (Boleh Login)</option>
+                    <option value="inactive">Dinonaktifkan (Akses Dicabut)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Password Baru (Opsional, Min. 6 Karakter)</label>
+                <input
+                  type="password"
+                  value={editTeacherForm.password}
+                  onChange={(e) => setEditTeacherForm({ ...editTeacherForm, password: e.target.value })}
+                  placeholder="Kosongkan jika tidak ingin mengganti password"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono"
+                />
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
@@ -5295,6 +5694,48 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
                 />
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Peran / Hak Akses</label>
+                  <select
+                    value={editTeacherForm.role}
+                    onChange={(e) => setEditTeacherForm({ ...editTeacherForm, role: e.target.value as UserRole })}
+                    disabled={editingTeacher?.username === 'TAMANSISWA'}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold disabled:opacity-60"
+                  >
+                    <option value="guru">Guru</option>
+                    <option value="admin">Administrator</option>
+                    <option value="tata_usaha">Tata Usaha</option>
+                    <option value="kepala_sekolah">Kepala Sekolah</option>
+                    <option value="satpam">Satpam</option>
+                    <option value="panitia">Panitia</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Status Akun</label>
+                  <select
+                    value={editTeacherForm.isActive ? 'active' : 'inactive'}
+                    onChange={(e) => setEditTeacherForm({ ...editTeacherForm, isActive: e.target.value === 'active' })}
+                    disabled={editingTeacher?.username === 'TAMANSISWA'}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold disabled:opacity-60"
+                  >
+                    <option value="active">Aktif (Boleh Login)</option>
+                    <option value="inactive">Dinonaktifkan (Akses Dicabut)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Password Baru (Opsional, Min. 6 Karakter)</label>
+                <input
+                  type="password"
+                  value={editTeacherForm.password}
+                  onChange={(e) => setEditTeacherForm({ ...editTeacherForm, password: e.target.value })}
+                  placeholder="Kosongkan jika tidak ingin mengganti password"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono"
+                />
+              </div>
+
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
@@ -5328,10 +5769,10 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
 
             <div className="space-y-1.5">
               <h3 className="text-base font-black text-slate-900">
-                Hapus Kuis Permanen?
+                Konfirmasi Penghapusan Permanen
               </h3>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Kuis <strong className="text-slate-800">"{quizToDelete.title}"</strong> akan dihapus secara permanen dari server dan perangkat. Seluruh riwayat nilai dan peserta akan dibersihkan selamanya.
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Apakah Anda yakin ingin menghapus data ini secara permanen? Kuis <strong className="text-slate-800">&quot;{quizToDelete.title}&quot;</strong> beserta riwayat nilainya akan hilang selamanya dari seluruh perangkat.
               </p>
             </div>
 
@@ -5348,8 +5789,133 @@ export const AdminDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpen
                 onClick={() => confirmExecuteDeleteQuiz(quizToDelete.id)}
                 className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-md shadow-rose-600/25 transition active:scale-95"
               >
-                Ya, Hapus Permanen
+                Hapus Permanen
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Penghapusan Permanen Umum */}
+      <ConfirmDeleteModal
+        isOpen={Boolean(pendingDeleteModal)}
+        title={pendingDeleteModal?.title || 'Konfirmasi Penghapusan Permanen'}
+        itemName={pendingDeleteModal?.itemName}
+        message={pendingDeleteModal?.message || 'Apakah Anda yakin ingin menghapus data ini secara permanen?'}
+        confirmLabel="Hapus Permanen"
+        cancelLabel="Batal"
+        loading={confirmDeleteLoading}
+        onCancel={() => {
+          if (!confirmDeleteLoading) setPendingDeleteModal(null);
+        }}
+        onConfirm={async () => {
+          if (!pendingDeleteModal) return;
+          setConfirmDeleteLoading(true);
+          try {
+            await pendingDeleteModal.onExecute();
+            setPendingDeleteModal(null);
+          } catch (err: any) {
+            showError('Gagal Menghapus Data', err?.message || 'Penghapusan gagal diproses oleh server.');
+          } finally {
+            setConfirmDeleteLoading(false);
+          }
+        }}
+      />
+
+      {/* Drawer / Modal Notifikasi Khusus Admin Portal Dashboard */}
+      {showAdminNotifDrawer && (
+        <div
+          className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/65 backdrop-blur-xs p-4 animate-in fade-in"
+          onClick={() => setShowAdminNotifDrawer(false)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 sm:p-5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center">
+                  <Bell className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm sm:text-base">Notifikasi Khusus Admin Dashboard</h3>
+                  <p className="text-[11px] text-slate-300">
+                    Aktivitas penambahan, perubahan & penghapusan akun oleh Admin lain secara real-time
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAdminNotifDrawer(false)}
+                className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2">
+              <span className="text-xs font-bold text-slate-600">
+                Total: {adminNotifications.length} notifikasi ({adminNotifications.filter((n) => !n.isRead).length} belum dibaca)
+              </span>
+              {adminNotifications.some((n) => !n.isRead) && (
+                <button
+                  type="button"
+                  onClick={handleMarkAllAdminNotifsRead}
+                  className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold transition"
+                >
+                  <CheckCheck className="w-3.5 h-3.5" />
+                  <span>Tandai Semua Dibaca</span>
+                </button>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2.5">
+              {adminNotifications.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 space-y-2">
+                  <Bell className="w-10 h-10 mx-auto text-slate-300" />
+                  <p className="text-xs font-bold text-slate-600">Belum ada notifikasi aktivitas Admin</p>
+                  <p className="text-[11px]">
+                    Notifikasi akan muncul otomatis tanpa refresh saat Admin di perangkat lain menambahkan atau mengelola akun.
+                  </p>
+                </div>
+              ) : (
+                adminNotifications.map((notif) => (
+                  <div
+                    key={notif.id}
+                    onClick={() => !notif.isRead && handleMarkAdminNotifRead(notif.id)}
+                    className={`p-3.5 rounded-2xl border transition cursor-pointer flex items-start gap-3 ${
+                      !notif.isRead
+                        ? 'bg-emerald-50/75 border-emerald-300'
+                        : 'bg-white border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                      <UserPlus className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <h4 className="text-xs sm:text-sm font-black text-slate-900">{notif.title}</h4>
+                        {!notif.isRead && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-600 text-white">
+                            BARU
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-700 mt-1 leading-relaxed">{notif.message}</p>
+                      <div className="flex items-center justify-between gap-2 mt-2 flex-wrap">
+                        {notif.statusLabel && (
+                          <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-lg">
+                            {notif.statusLabel}
+                          </span>
+                        )}
+                        <span className="text-[10px] text-slate-400">
+                          {new Date(notif.createdAt).toLocaleString('id-ID')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

@@ -15,6 +15,8 @@ import {
   Info,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
+import { useToast } from '../context/ToastContext.tsx';
+import { ConfirmDeleteModal } from './ConfirmDeleteModal.tsx';
 import { api } from '../lib/api.ts';
 import type { DeviceSession } from '../types/index.ts';
 
@@ -88,9 +90,11 @@ export function detectCurrentDeviceInfo(): {
 
 export const DeviceSessionsModal: React.FC<DeviceSessionsModalProps> = ({ isOpen, onClose }) => {
   const { user } = useAuth();
+  const { showSuccess, showError } = useToast();
   const [sessions, setSessions] = useState<DeviceSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [terminatingId, setTerminatingId] = useState<string | null>(null);
+  const [pendingTerminateId, setPendingTerminateId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const currentInfo = detectCurrentDeviceInfo();
@@ -160,21 +164,35 @@ export const DeviceSessionsModal: React.FC<DeviceSessionsModalProps> = ({ isOpen
   useEffect(() => {
     if (isOpen) {
       loadSessions();
+      const onSync = (e: any) => {
+        const entity = e?.detail?.entity;
+        if (!entity || entity === 'devices' || entity === 'users' || entity === 'system') {
+          loadSessions();
+        }
+      };
+      window.addEventListener('tamvesta_realtime_sync', onSync);
+      return () => window.removeEventListener('tamvesta_realtime_sync', onSync);
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleTerminateSession = async (sessionId: string) => {
-    if (!confirm('Apakah Anda yakin ingin mengakhiri sesi login pada perangkat ini?')) return;
-    setTerminatingId(sessionId);
+  const handleTerminateSession = (sessionId: string) => {
+    setPendingTerminateId(sessionId);
+  };
+
+  const confirmTerminateSession = async () => {
+    if (!pendingTerminateId) return;
+    setTerminatingId(pendingTerminateId);
     try {
-      await api.terminateDeviceSession(sessionId);
-      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      await api.terminateDeviceSession(pendingTerminateId);
+      setSessions((prev) => prev.filter((s) => s.id !== pendingTerminateId));
       setNotice('Sesi perangkat berhasil dihentikan.');
+      showSuccess('Sesi Dihentikan', 'Akses perangkat tersebut telah dicabut.');
+      setPendingTerminateId(null);
       setTimeout(() => setNotice(null), 3000);
     } catch (err: any) {
-      alert(err.message || 'Gagal mengakhiri sesi perangkat.');
+      showError('Gagal Mengakhiri Sesi', err.message || 'Gagal mengakhiri sesi perangkat.');
     } finally {
       setTerminatingId(null);
     }
@@ -353,6 +371,17 @@ export const DeviceSessionsModal: React.FC<DeviceSessionsModalProps> = ({ isOpen
           </button>
         </div>
       </div>
+
+      <ConfirmDeleteModal
+        isOpen={Boolean(pendingTerminateId)}
+        title="Akhiri Sesi Perangkat"
+        message="Apakah Anda yakin ingin menghapus sesi perangkat ini secara permanen?"
+        confirmLabel="Hapus Permanen"
+        cancelLabel="Batal"
+        loading={Boolean(terminatingId)}
+        onCancel={() => setPendingTerminateId(null)}
+        onConfirm={confirmTerminateSession}
+      />
     </div>
   );
 };

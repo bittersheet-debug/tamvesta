@@ -39,6 +39,8 @@ import {
 } from 'lucide-react';
 import { LostFoundManagementPanel } from '../../components/LostFoundManagementPanel.tsx';
 import { NotificationBroadcastPanel } from '../../components/NotificationBroadcastPanel.tsx';
+import { ConfirmDeleteModal } from '../../components/ConfirmDeleteModal.tsx';
+import { useToast } from '../../context/ToastContext.tsx';
 import { api } from '../../lib/api.ts';
 import type {
   TuitionBill,
@@ -54,8 +56,17 @@ type TuTab = 'bills' | 'finance' | 'documents' | 'chat' | 'lost_found' | 'report
 
 export const TuDashboard: React.FC = () => {
   const { user } = useAuth();
+  const { showSuccess, showError } = useToast();
   const [activeTab, setActiveTab] = useState<TuTab>('bills');
   const [loading, setLoading] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<
+    | { kind: 'reject_student'; student: UserType }
+    | { kind: 'verify_bill'; bill: TuitionBill }
+    | { kind: 'delete_bill'; id: string }
+    | { kind: 'delete_doc'; id: string }
+    | null
+  >(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
   // --- Reports State ---
   const [appReports, setAppReports] = useState<any[]>([]);
@@ -134,27 +145,30 @@ export const TuDashboard: React.FC = () => {
       setAllStudents((prev) =>
         prev.map((s) => (s.id === student.id ? { ...s, isActive: true, registrationStatus: 'approved' } : s))
       );
-      alert(`Pendaftaran siswa "${student.name}" berhasil disetujui (ACC)! Akun siswa kini aktif.`);
+      showSuccess('Pendaftaran Disetujui', `Pendaftaran siswa "${student.name}" disetujui (ACC)! Akun kini aktif.`);
     } catch (err: any) {
-      alert(err.message || 'Gagal menyetujui pendaftaran.');
+      showError('Gagal ACC Pendaftaran', err.message || 'Gagal menyetujui pendaftaran.');
     }
   };
 
-  const handleTuReject = async (student: UserType) => {
-    if (!confirm(`Apakah Anda yakin ingin menolak pendaftaran calon siswa "${student.name}"?`)) return;
-    try {
-      await api.rejectStudentRegistration(student.id);
-      setAllStudents((prev) =>
-        prev.map((s) => (s.id === student.id ? { ...s, isActive: false, registrationStatus: 'rejected' } : s))
-      );
-    } catch (err: any) {
-      alert(err.message || 'Gagal menolak pendaftaran.');
-    }
+  const handleTuReject = (student: UserType) => {
+    setConfirmAction({ kind: 'reject_student', student });
   };
 
   useEffect(() => {
     loadAllData();
   }, [activeTab]);
+
+  useEffect(() => {
+    const onRealtimeSync = (e: any) => {
+      const entity = e?.detail?.entity;
+      if (!entity || ['tu_bills', 'tu_transactions', 'tu_documents', 'tu_reports', 'users', 'lost_found', 'app_reports', 'system'].includes(entity)) {
+        loadAllData();
+      }
+    };
+    window.addEventListener('tamvesta_realtime_sync', onRealtimeSync);
+    return () => window.removeEventListener('tamvesta_realtime_sync', onRealtimeSync);
+  }, []);
 
   const loadAllData = async () => {
     setLoading(true);
@@ -185,7 +199,10 @@ export const TuDashboard: React.FC = () => {
   // Create Bill
   const handleCreateBill = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newBillForm.title) return alert('Judul tagihan wajib diisi');
+    if (!newBillForm.title) {
+      showError('Validasi Gagal', 'Judul tagihan wajib diisi');
+      return;
+    }
     try {
       await api.createTuitionBill(newBillForm);
       setShowCreateBillModal(false);
@@ -201,54 +218,29 @@ export const TuDashboard: React.FC = () => {
         notes: '',
       });
       loadAllData();
-      alert('Tagihan berhasil dibuat!');
+      showSuccess('Tagihan Dibuat', 'Tagihan SPP berhasil diterbitkan!');
     } catch (err: any) {
-      alert(err.message || 'Gagal membuat tagihan');
+      showError('Gagal Membuat Tagihan', err.message || 'Gagal membuat tagihan');
     }
   };
 
   // Verify Bill (mark as lunas)
-  const handleVerifyBill = async (bill: TuitionBill) => {
-    if (!confirm(`Konfirmasi pelunasan untuk ${bill.title} (${bill.studentName})?`)) return;
-    try {
-      await api.updateTuitionBill(bill.id, {
-        status: 'lunas',
-        paidAt: new Date().toISOString(),
-      });
-      // Otomatis catat transaksi pemasukan
-      await api.createTuitionTransaction({
-        billId: bill.id,
-        studentId: bill.studentId,
-        studentName: bill.studentName,
-        studentKelas: bill.studentKelas,
-        amount: bill.amount,
-        type: 'pemasukan',
-        category: bill.category,
-        paymentMethod: 'Tunai / Kasir TU',
-        description: `Pelunasan ${bill.title} - ${bill.studentName}`,
-      });
-      loadAllData();
-      alert('Tagihan berhasil dilunasi dan kwitansi diterbitkan!');
-    } catch (err: any) {
-      alert(err.message || 'Gagal memverifikasi tagihan');
-    }
+  const handleVerifyBill = (bill: TuitionBill) => {
+    setConfirmAction({ kind: 'verify_bill', bill });
   };
 
   // Delete Bill
-  const handleDeleteBill = async (id: string) => {
-    if (!confirm('Yakin ingin menghapus data tagihan ini?')) return;
-    try {
-      await api.deleteTuitionBill(id);
-      loadAllData();
-    } catch (err: any) {
-      alert(err.message || 'Gagal menghapus tagihan');
-    }
+  const handleDeleteBill = (id: string) => {
+    setConfirmAction({ kind: 'delete_bill', id });
   };
 
   // Create Transaction
   const handleAddTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTrxForm.description) return alert('Keterangan transaksi wajib diisi');
+    if (!newTrxForm.description) {
+      showError('Validasi Gagal', 'Keterangan transaksi wajib diisi');
+      return;
+    }
     try {
       await api.createTuitionTransaction(newTrxForm);
       setShowAddTrxModal(false);
@@ -262,16 +254,19 @@ export const TuDashboard: React.FC = () => {
         description: '',
       });
       loadAllData();
-      alert('Transaksi berhasil dicatat!');
+      showSuccess('Transaksi Dicatat', 'Transaksi kas berhasil dicatat!');
     } catch (err: any) {
-      alert(err.message || 'Gagal mencatat transaksi');
+      showError('Gagal Mencatat Transaksi', err.message || 'Gagal mencatat transaksi');
     }
   };
 
   // Create Document
   const handleAddDocument = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newDocForm.title) return alert('Judul / Perihal surat wajib diisi');
+    if (!newDocForm.title) {
+      showError('Validasi Gagal', 'Judul / Perihal surat wajib diisi');
+      return;
+    }
     try {
       await api.createTuDocument(newDocForm);
       setShowAddDocModal(false);
@@ -284,20 +279,60 @@ export const TuDashboard: React.FC = () => {
         notes: '',
       });
       loadAllData();
-      alert('Dokumen surat berhasil diarsipkan!');
+      showSuccess('Dokumen Diarsipkan', 'Dokumen surat berhasil diarsipkan!');
     } catch (err: any) {
-      alert(err.message || 'Gagal mengarsipkan dokumen');
+      showError('Gagal Mengarsipkan', err.message || 'Gagal mengarsipkan dokumen');
     }
   };
 
   // Delete Document
-  const handleDeleteDocument = async (id: string) => {
-    if (!confirm('Yakin ingin menghapus arsip dokumen ini?')) return;
+  const handleDeleteDocument = (id: string) => {
+    setConfirmAction({ kind: 'delete_doc', id });
+  };
+
+  const handleConfirmModalAction = async () => {
+    if (!confirmAction) return;
+    setConfirmLoading(true);
     try {
-      await api.deleteTuDocument(id);
-      loadAllData();
+      if (confirmAction.kind === 'reject_student') {
+        await api.rejectStudentRegistration(confirmAction.student.id);
+        setAllStudents((prev) =>
+          prev.map((s) => (s.id === confirmAction.student.id ? { ...s, isActive: false, registrationStatus: 'rejected' } : s))
+        );
+        showSuccess('Pendaftaran Ditolak', `Pendaftaran ${confirmAction.student.name} telah ditolak.`);
+      } else if (confirmAction.kind === 'verify_bill') {
+        const bill = confirmAction.bill;
+        await api.updateTuitionBill(bill.id, {
+          status: 'lunas',
+          paidAt: new Date().toISOString(),
+        });
+        await api.createTuitionTransaction({
+          billId: bill.id,
+          studentId: bill.studentId,
+          studentName: bill.studentName,
+          studentKelas: bill.studentKelas,
+          amount: bill.amount,
+          type: 'pemasukan',
+          category: bill.category,
+          paymentMethod: 'Tunai / Kasir TU',
+          description: `Pelunasan ${bill.title} - ${bill.studentName}`,
+        });
+        await loadAllData();
+        showSuccess('Tagihan Lunas', 'Tagihan berhasil dilunasi dan kwitansi diterbitkan!');
+      } else if (confirmAction.kind === 'delete_bill') {
+        await api.deleteTuitionBill(confirmAction.id);
+        setBills((prev) => prev.filter((b) => b.id !== confirmAction.id));
+        showSuccess('Tagihan Dihapus Permanen', 'Data tagihan telah dihapus selamanya.');
+      } else if (confirmAction.kind === 'delete_doc') {
+        await api.deleteTuDocument(confirmAction.id);
+        setDocuments((prev) => prev.filter((d) => d.id !== confirmAction.id));
+        showSuccess('Dokumen Dihapus Permanen', 'Arsip dokumen telah dihapus selamanya.');
+      }
+      setConfirmAction(null);
     } catch (err: any) {
-      alert(err.message || 'Gagal menghapus dokumen');
+      showError('Operasi Gagal', err.message || 'Gagal memproses tindakan.');
+    } finally {
+      setConfirmLoading(false);
     }
   };
 
@@ -323,7 +358,7 @@ export const TuDashboard: React.FC = () => {
       const msgs = await api.getTuChatMessages(targetStudent.id);
       setChatMessages(msgs);
     } catch (err: any) {
-      alert(err.message || 'Gagal mengirim pesan');
+      showError('Gagal Mengirim Pesan', err.message || 'Gagal mengirim pesan');
     }
   };
 
@@ -421,7 +456,7 @@ export const TuDashboard: React.FC = () => {
       setMonthlyReports(updatedReports);
       setTimeout(() => setReportSuccessMsg(null), 6000);
     } catch (err: any) {
-      alert(err.message || 'Gagal mengirimkan laporan bulanan.');
+      showError('Gagal Mengirim Laporan', err.message || 'Gagal mengirimkan laporan bulanan.');
     } finally {
       setIsSendingReport(false);
     }
@@ -506,7 +541,7 @@ export const TuDashboard: React.FC = () => {
       const filename = `Backup_Tata_Usaha_Tamansiswa_${selectedMonth}.xlsx`;
       XLSX.writeFile(wb, filename);
     } catch (err: any) {
-      alert('Gagal mengekspor file Excel: ' + err.message);
+      showError('Gagal Ekspor Excel', err.message);
     }
   };
 
@@ -802,7 +837,7 @@ export const TuDashboard: React.FC = () => {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      alert('Gagal mengekspor file Word: ' + err.message);
+      showError('Gagal Ekspor Word', err.message);
     }
   };
 
@@ -1626,7 +1661,10 @@ Tembusan:
                             <button
                               type="button"
                               onClick={async () => {
-                                if (!tuResponseMessage.trim()) return alert('Tanggapan tidak boleh kosong');
+                                if (!tuResponseMessage.trim()) {
+                                  showError('Validasi Gagal', 'Tanggapan tidak boleh kosong');
+                                  return;
+                                }
                                 try {
                                   const updated = await api.respondAppReportAdmin(r.id, {
                                     message: tuResponseMessage.trim(),
@@ -1635,9 +1673,9 @@ Tembusan:
                                   setAppReports(prev => prev.map(item => item.id === updated.id ? updated : item));
                                   setRespondingReportId(null);
                                   setTuResponseMessage('');
-                                  alert('Tanggapan berhasil dikirim ke siswa!');
+                                  showSuccess('Tanggapan Terkirim', 'Tanggapan berhasil dikirim ke siswa!');
                                 } catch (e: any) {
-                                  alert(e.message);
+                                  showError('Gagal Mengirim', e.message);
                                 }
                               }}
                               className="px-4 py-1.5 bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs"
@@ -2352,6 +2390,40 @@ Tembusan:
           </div>
         </div>
       )}
+
+      <ConfirmDeleteModal
+        isOpen={Boolean(confirmAction)}
+        title={
+          confirmAction?.kind === 'reject_student'
+            ? 'Tolak Pendaftaran Siswa'
+            : confirmAction?.kind === 'verify_bill'
+            ? 'Konfirmasi Pelunasan SPP'
+            : 'Hapus Data Permanen'
+        }
+        message={
+          confirmAction?.kind === 'reject_student'
+            ? `Apakah Anda yakin ingin menolak pendaftaran calon siswa "${confirmAction.student.name}"?`
+            : confirmAction?.kind === 'verify_bill'
+            ? `Konfirmasi pelunasan untuk ${confirmAction.bill.title} (${confirmAction.bill.studentName})?`
+            : 'Apakah Anda yakin ingin menghapus data ini secara permanen?'
+        }
+        itemName={
+          confirmAction?.kind === 'reject_student'
+            ? confirmAction.student.name
+            : confirmAction?.kind === 'verify_bill'
+            ? confirmAction.bill.title
+            : confirmAction?.kind === 'delete_bill'
+            ? bills.find((b) => b.id === confirmAction.id)?.title
+            : confirmAction?.kind === 'delete_doc'
+            ? documents.find((d) => d.id === confirmAction.id)?.title
+            : undefined
+        }
+        confirmLabel={confirmAction?.kind === 'verify_bill' ? 'Konfirmasi Lunas' : 'Hapus Permanen'}
+        cancelLabel="Batal"
+        loading={confirmLoading}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={handleConfirmModalAction}
+      />
     </div>
   );
 };

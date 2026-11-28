@@ -485,23 +485,23 @@ export const ClassManagementTab: React.FC<ClassManagementTabProps> = ({
             <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
               <AlertCircle className="w-6 h-6" />
             </div>
-            <h3 className="font-black text-slate-900 text-base">Hapus Kelas Ini?</h3>
-            <p className="text-xs text-slate-500">
-              Apakah Anda yakin ingin menghapus kelas <strong>{classToDelete.name}</strong>? Tindakan ini tidak dapat dibatalkan.
+            <h3 className="font-black text-slate-900 text-base">Konfirmasi Penghapusan Permanen</h3>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Apakah Anda yakin ingin menghapus data ini secara permanen? Kelas <strong>{classToDelete.name}</strong> akan dihapus selamanya dari database di seluruh perangkat.
             </p>
             <div className="flex justify-center gap-2 pt-2">
               <button
                 onClick={() => setClassToDelete(null)}
-                className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-xl"
+                className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl"
               >
                 Batal
               </button>
               <button
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-md transition disabled:opacity-50"
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-md transition disabled:opacity-50"
               >
-                {isDeleting ? 'Menghapus...' : 'Ya, Hapus'}
+                {isDeleting ? 'Menghapus...' : 'Hapus Permanen'}
               </button>
             </div>
           </div>

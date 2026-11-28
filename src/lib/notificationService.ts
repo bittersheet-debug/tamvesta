@@ -1,4 +1,4 @@
-import { api } from './api.ts';
+import { api, offlineStore } from './api.ts';
 import { playNotificationChime } from './audio.ts';
 import type { Announcement, AppNotification, StudentPost } from '../types/index.ts';
 
@@ -290,15 +290,24 @@ export function startNotificationSync(options?: {
         }
       } catch (_) {}
 
-      // 3. Cek Notifikasi Sistem Belum Terbaca
+      // 3. Cek Notifikasi Sistem Belum Terbaca (kecuali admin_account_event yang ditangani realtimeSync agar tidak ganda)
       try {
+        const currentUser = offlineStore.getCurrentUser();
         const notifs = await api.getNotifications();
         if (Array.isArray(notifs)) {
+          const filteredNotifs = notifs.filter((n: any) => {
+            if (n.type === 'admin_account_event') return false;
+            if (n.targetRole && currentUser?.role !== n.targetRole) return false;
+            if (Array.isArray(n.targetRoles) && n.targetRoles.length > 0 && (!currentUser || !n.targetRoles.includes(currentUser.role))) {
+              return false;
+            }
+            return true;
+          });
           if (isFirstRun) {
-            notifs.forEach((n: AppNotification) => seenNotifs.add(n.id));
+            filteredNotifs.forEach((n: AppNotification) => seenNotifs.add(n.id));
             saveSeenIdSet(SEEN_NOTIF_IDS_KEY, seenNotifs);
           } else {
-            const unreadNotifs = notifs.filter((n: any) => !n.isRead && !seenNotifs.has(n.id));
+            const unreadNotifs = filteredNotifs.filter((n: any) => !n.isRead && !seenNotifs.has(n.id));
             if (unreadNotifs.length > 0) {
               const latest = unreadNotifs[0];
               seenNotifs.add(latest.id);

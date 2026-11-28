@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api.ts';
 import { playNotificationChime } from '../lib/audio.ts';
+import { useToast } from '../context/ToastContext.tsx';
+import { ConfirmDeleteModal } from './ConfirmDeleteModal.tsx';
 import type { AppNotification } from '../types/index.ts';
 
 interface NotificationBroadcastPanelProps {
@@ -22,14 +24,14 @@ interface NotificationBroadcastPanelProps {
   userName?: string;
 }
 
-export const NotificationBroadcastPanel: React.FC<NotificationBroadcastPanelProps> = ({
-  userRole = 'admin',
-  userName = 'Pengelola',
-}) => {
+export const NotificationBroadcastPanel: React.FC<NotificationBroadcastPanelProps> = () => {
+  const { showSuccess, showError } = useToast();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Form State
   const [title, setTitle] = useState('');
@@ -55,6 +57,14 @@ export const NotificationBroadcastPanel: React.FC<NotificationBroadcastPanelProp
 
   useEffect(() => {
     loadNotifications();
+    const onSync = (e: any) => {
+      const entity = e?.detail?.entity;
+      if (!entity || entity === 'notifications' || entity === 'system') {
+        loadNotifications();
+      }
+    };
+    window.addEventListener('tamvesta_realtime_sync', onSync);
+    return () => window.removeEventListener('tamvesta_realtime_sync', onSync);
   }, []);
 
   const handleSendNotification = async (e: React.FormEvent) => {
@@ -99,13 +109,22 @@ export const NotificationBroadcastPanel: React.FC<NotificationBroadcastPanelProp
     }
   };
 
-  const handleDeleteNotif = async (id: string) => {
-    if (!window.confirm('Hapus notifikasi ini dari sistem?')) return;
+  const handleDeleteNotif = (id: string) => {
+    setDeleteTargetId(id);
+  };
+
+  const confirmDeleteNotif = async () => {
+    if (!deleteTargetId) return;
+    setDeleting(true);
     try {
-      await api.deleteNotificationAdmin(id);
-      setNotifications((prev) => prev.filter((n) => n.id !== id));
+      await api.deleteNotificationAdmin(deleteTargetId);
+      setNotifications((prev) => prev.filter((n) => n.id !== deleteTargetId));
+      showSuccess('Notifikasi Dihapus', 'Siaran notifikasi telah dihapus secara permanen.');
+      setDeleteTargetId(null);
     } catch (err: any) {
-      alert(err.message || 'Gagal menghapus notifikasi.');
+      showError('Gagal Menghapus', err.message || 'Gagal menghapus notifikasi.');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -372,6 +391,15 @@ export const NotificationBroadcastPanel: React.FC<NotificationBroadcastPanelProp
           )}
         </div>
       </div>
+      <ConfirmDeleteModal
+        isOpen={Boolean(deleteTargetId)}
+        title="Hapus Siaran Notifikasi"
+        message="Apakah Anda yakin ingin menghapus data ini secara permanen?"
+        itemName={notifications.find((x) => x.id === deleteTargetId)?.title}
+        loading={deleting}
+        onCancel={() => setDeleteTargetId(null)}
+        onConfirm={confirmDeleteNotif}
+      />
     </div>
   );
 };

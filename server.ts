@@ -2,7 +2,8 @@ import express from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { db, verifyPassword, generateRandomQuizToken, OFFICIAL_STAFF_LIST, OFFICIAL_STUDENT_LIST } from './src/server/db.ts';
+import { db, hashPassword, verifyPassword, generateRandomQuizToken, OFFICIAL_STAFF_LIST, OFFICIAL_STUDENT_LIST } from './src/server/db.ts';
+import type { RealtimeEvent } from './src/types/index.ts';
 import {
   createSessionToken,
   authMiddleware,
@@ -38,7 +39,12 @@ process.on('unhandledRejection', (reason) => {
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Device-Id, X-Session-Id');
+  res.header('Access-Control-Expose-Headers', 'X-Deleted-User-Ids, X-Deleted-Post-Ids, X-Deleted-Story-Ids, X-Deleted-Quiz-Ids, X-Deleted-Subject-Ids, X-Deleted-Announcement-Ids, X-Deleted-Schedule-Ids, X-Deleted-Class-Ids, X-Deleted-Device-Ids, X-Deleted-Message-Ids, X-Deleted-Notification-Ids, X-Deleted-Article-Ids, X-Deleted-Event-Ids, X-Deleted-Note-Ids, X-Deleted-Bill-Ids, X-Deleted-Document-Ids, X-Sync-Version');
+  if (req.path.startsWith('/api/')) {
+    res.header('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.header('X-Sync-Version', String(db.getSyncVersion()));
+  }
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
@@ -55,10 +61,104 @@ function sanitizeUser(user: any) {
   return safeUser;
 }
 
+function emitSyncUpdate(
+  entity: RealtimeEvent['entity'],
+  action: RealtimeEvent['action'],
+  entityId?: string,
+  excludeDeviceId?: string,
+  payload?: Record<string, any>
+) {
+  db.emitRealtimeEvent({
+    type: 'sync_update',
+    entity,
+    action,
+    entityId,
+    excludeDeviceId,
+    payload: {
+      ...payload,
+      dbVersion: db.getSyncVersion(),
+    },
+  });
+}
+
 // -------------------------------------------------------------
 // Health check — digunakan APK untuk ping server sebelum login
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', server: 'TAMVESTA', time: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    server: 'TAMVESTA',
+    dbVersion: db.getSyncVersion(),
+    realtimeSeq: db.getRealtimeSeq(),
+    time: new Date().toISOString(),
+  });
+});
+
+// -------------------------------------------------------------
+// Real-time Multi-Device Synchronization Stream (SSE) & Events Poll
+app.get('/api/realtime/stream', authMiddleware, (req: AuthenticatedRequest, res) => {
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  if (typeof (res as any).flushHeaders === 'function') {
+    (res as any).flushHeaders();
+  }
+
+  const sendEvent = (eventName: string, data: any) => {
+    try {
+      res.write(`event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`);
+    } catch (_) {}
+  };
+
+  const sinceSeq = parseInt(String(req.query.since || '0'), 10) || 0;
+  sendEvent('connected', {
+    seq: db.getRealtimeSeq(),
+    dbVersion: db.getSyncVersion(),
+    userId: req.user?.id,
+    role: req.user?.role,
+    deviceId: req.deviceId,
+  });
+
+  if (sinceSeq > 0) {
+    const missed = db.getRealtimeEventsSince(sinceSeq, req.user, req.deviceId);
+    missed.events.forEach((ev) => sendEvent(ev.type, ev));
+  }
+
+  const unsubscribe = db.subscribeRealtime((ev) => {
+    // Live-lookup user from DB so deactivated/deleted accounts get revoked immediately
+    const liveUser = req.user?.id ? db.findUserById(req.user.id) : null;
+    if (!liveUser || !liveUser.isActive) {
+      if (ev.type === 'session_revoked' && ev.targetUserId === req.user?.id) {
+        sendEvent('session_revoked', ev);
+      }
+      return;
+    }
+    if (db.isEventVisibleToUser(ev, liveUser, req.deviceId)) {
+      sendEvent(ev.type, ev);
+    }
+  });
+
+  const heartbeat = setInterval(() => {
+    sendEvent('heartbeat', {
+      seq: db.getRealtimeSeq(),
+      dbVersion: db.getSyncVersion(),
+      time: Date.now(),
+    });
+  }, 25000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
+});
+
+app.get('/api/realtime/events', authMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    await db.reloadFromGitHub().catch(() => {});
+  } catch (_) {}
+  const sinceSeq = parseInt(String(req.query.since || '0'), 10) || 0;
+  const result = db.getRealtimeEventsSince(sinceSeq, req.user, req.deviceId);
+  return res.json(result);
 });
 
 // -------------------------------------------------------------
@@ -241,28 +341,10 @@ app.get(['/api/proxy/kemendikdasmen', '/api/kemendikdasmen-viewer'], async (req,
 // 1. AUTHENTICATION ENDPOINTS
 // -------------------------------------------------------------
 
-// POST /api/auth/register (Pendaftaran Siswa Baru Mandiri)
-app.post('/api/auth/register', async (req, res) => {
-  const { name, username, password, confirmPassword, gender, kelas } = req.body;
-  if (!name || !name.trim()) return res.status(400).json({ error: 'Nama lengkap wajib diisi.' });
-  if (!gender || (gender !== 'Laki-laki' && gender !== 'Perempuan')) return res.status(400).json({ error: 'Pilih jenis kelamin (Laki-laki / Perempuan).' });
-  if (!kelas || !kelas.trim()) return res.status(400).json({ error: 'Pilih kelas siswa (Kelas 1 - Kelas 9).' });
-  if (!username || !username.trim()) return res.status(400).json({ error: 'Username wajib diisi.' });
-  if (!password || password.length < 6) return res.status(400).json({ error: 'Password minimal 6 karakter.' });
-  if (password !== confirmPassword) return res.status(400).json({ error: 'Password dan konfirmasi password tidak cocok.' });
-
-  const result = db.createStudent({ name, username, password, gender, kelas });
-  if (!result.success) {
-    return res.status(400).json({ error: result.error });
-  }
-
-  try {
-    await db.saveAsync();
-  } catch (_) {}
-
-  return res.status(201).json({
-    message: 'Pendaftaran akun siswa berhasil! Silakan masuk dengan username dan password Anda.',
-    user: sanitizeUser(result.user),
+// POST /api/auth/register (Dinonaktifkan untuk mencegah pendaftaran akun aktif tanpa persetujuan Admin)
+app.post('/api/auth/register', async (_req, res) => {
+  return res.status(403).json({
+    error: 'Pendaftaran akun aktif hanya dapat dilakukan oleh Administrator melalui Portal Dashboard TAMVESTA. Untuk pendaftaran PPDB calon siswa (menunggu ACC Admin), gunakan jalur pendaftaran PPDB.',
   });
 });
 
@@ -293,6 +375,7 @@ app.post('/api/auth/register-portal', async (req, res) => {
     return res.status(400).json({ error: result.error });
   }
 
+  emitSyncUpdate('users', 'created', result.user?.id);
   try {
     await db.saveAsync();
   } catch (_) {}
@@ -349,7 +432,7 @@ app.get('/api/public/registration-status/:query', (req, res) => {
 
 // POST /api/auth/login
 app.post('/api/auth/login', async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password, role: expectedRole } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Username dan password wajib diisi.' });
   }
@@ -357,19 +440,26 @@ app.post('/api/auth/login', async (req, res) => {
   const rawUsername = String(username).trim();
   const cleanUsername = rawUsername.toLowerCase().replace(/^@+/, '');
   const rawPassword = String(password).trim();
-  // Cek dulu pengguna yang ada di memori aktif
-  let user = db.findUserByUsername(cleanUsername, rawPassword) || db.findUserByUsername(rawUsername, rawPassword);
 
-  // Jika belum ada di memori lokal (misal akun baru dibuat di perangkat lain), ambil dari cloud
+  if (db.isUserDeleted(cleanUsername)) {
+    return res.status(401).json({ error: 'Akun ini telah dihapus dari sistem oleh Administrator.' });
+  }
+
+  let user = db.findUserByUsername(cleanUsername) || db.findUserByUsername(rawUsername);
+
   if (!user) {
     try {
       await db.reloadFromGitHub();
-      user = db.findUserByUsername(cleanUsername, rawPassword) || db.findUserByUsername(rawUsername, rawPassword);
+      user = db.findUserByUsername(cleanUsername) || db.findUserByUsername(rawUsername);
     } catch (_) {}
   }
 
   if (!user) {
-    return res.status(401).json({ error: 'Username atau password tidak ditemukan.' });
+    return res.status(401).json({ error: 'Username atau password tidak terdaftar di sistem TAMVESTA.' });
+  }
+
+  if (expectedRole && user.role !== expectedRole) {
+    return res.status(403).json({ error: `Role pengguna tidak sesuai. Akun ini terdaftar sebagai ${user.role}.` });
   }
 
   if (!user.isActive) {
@@ -387,62 +477,28 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
     return res.status(403).json({
-      error: 'Akun Anda dinonaktifkan oleh Administrator. Silakan hubungi bagian tata usaha sekolah.',
+      error: 'Akun Anda belum aktif atau dinonaktifkan oleh Administrator. Silakan hubungi Administrator sekolah.',
     });
   }
 
-  const inputPass = rawPassword;
-  const inputPassLower = inputPass.toLowerCase();
-  const initPass = (user.initialPassword || '').trim();
-  const userPass = (user.password || '').trim();
-  const isPassChanged = Boolean((user as any).passwordChanged);
-
-  let isValid = false;
-
-  if (isPassChanged) {
-    // Siswa/user telah resmi ganti kata sandi -> HANYA password baru yang berlaku!
-    // Password awal/pertama TIDAK BOLEH lagi digunakan
-    if (userPass && (inputPass === userPass || inputPassLower === userPass.toLowerCase())) {
-      isValid = true;
-    } else if (user.passwordHash && user.salt && (verifyPassword(inputPass, user.passwordHash, user.salt) || verifyPassword(inputPassLower, user.passwordHash, user.salt))) {
-      isValid = true;
-    }
-  } else {
-    // Belum pernah ganti sandi -> HANYA sandi awal resmi yang berlaku
-    if (initPass && (inputPass === initPass || inputPassLower === initPass.toLowerCase())) {
-      isValid = true;
-    } else if (userPass && (inputPass === userPass || inputPassLower === userPass.toLowerCase())) {
-      isValid = true;
-    } else if (user.passwordHash && user.salt && (verifyPassword(inputPass, user.passwordHash, user.salt, user.initialPassword) || verifyPassword(inputPassLower, user.passwordHash, user.salt, user.initialPassword))) {
-      isValid = true;
-    }
-  }
-
-  // Khusus Kredensial Resmi Dokumen (Admin Utama & Daftar Staf/Siswa Resmi)
-  if (!isValid) {
-    if ((user.role === 'admin' || user.username.toUpperCase() === 'TAMANSISWA') && (inputPass === 'TAMVESTA123' || inputPassLower === 'tamvesta123' || inputPass.toUpperCase() === 'TAMANSISWA')) {
-      isValid = true;
-    } else if ((user.role === 'support' || user.username.toLowerCase() === 'tamvesta') && (inputPass === 'TAMVESTATAMSIS' || inputPassLower === 'tamvestatamsis')) {
-      isValid = true;
-    } else if (!isPassChanged) {
-      // Periksa kecocokan dengan sandi awal staf resmi dokumen
-      const staffPreset = OFFICIAL_STAFF_LIST.find((s) => s.username.toLowerCase() === cleanUsername);
-      if (staffPreset && (inputPass === staffPreset.initialPassword || inputPassLower === staffPreset.initialPassword.toLowerCase())) {
-        isValid = true;
-      }
-      // Periksa kecocokan dengan sandi awal siswa resmi dokumen
-      const studentPreset = OFFICIAL_STUDENT_LIST.find((s) => s.username.toLowerCase() === cleanUsername);
-      if (studentPreset && (inputPass === studentPreset.initialPassword || inputPassLower === studentPreset.initialPassword.toLowerCase())) {
-        isValid = true;
-      }
-    }
-  }
+  const isValid = verifyPassword(rawPassword, user.passwordHash, user.salt);
   if (!isValid) {
     return res.status(401).json({ error: 'Username atau password tidak sesuai.' });
   }
 
-  const token = createSessionToken(user.id);
-  const mustChange = false; // Siswa langsung dapat masuk selamanya tanpa dipaksa ganti sandi
+  // Upgrade hash lawas (10k iterasi) ke pbkdf2v2 (100k iterasi) secara transparan saat login
+  if (user.passwordHash && !user.passwordHash.startsWith('pbkdf2v2$')) {
+    const upgraded = hashPassword(rawPassword);
+    user.passwordHash = upgraded.hash;
+    user.salt = upgraded.salt;
+    delete (user as any).password;
+    delete (user as any).initialPassword;
+    try {
+      await db.saveAsync();
+    } catch (_) {}
+  }
+
+  const token = createSessionToken(user.id, user.tokenVersion ?? 0);
   const sanitized = sanitizeUser(user);
   if (sanitized) sanitized.mustChangePassword = false;
   return res.json({
@@ -452,19 +508,24 @@ app.post('/api/auth/login', async (req, res) => {
   });
 });
 
-// GET /api/auth/me - Sinkronkan profil akun terbaru & centang biru
+// GET /api/auth/me - Sinkronkan profil akun terbaru & validasi status aktif
 app.get('/api/auth/me', authMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     await db.reloadFromGitHub();
   } catch (_) {}
   const freshUser = req.user?.id ? db.findUserById(req.user.id) : null;
-  const targetUser = freshUser || req.user;
-  const mustChange = false;
-  const sanitized = sanitizeUser(targetUser);
+  if (!freshUser || db.isUserDeleted(req.user!.id)) {
+    return res.status(401).json({ error: 'Akun telah dihapus.', code: 'SESSION_REVOKED' });
+  }
+  if (!freshUser.isActive) {
+    return res.status(403).json({ error: 'Akun dinonaktifkan oleh Admin.', code: 'ACCOUNT_DISABLED' });
+  }
+  const sanitized = sanitizeUser(freshUser);
   if (sanitized) sanitized.mustChangePassword = false;
   return res.json({
     user: sanitized,
-    mustChangePassword: mustChange,
+    mustChangePassword: false,
+    dbVersion: db.getSyncVersion(),
   });
 });
 
@@ -480,19 +541,22 @@ app.post('/api/auth/change-password', authMiddleware, async (req: AuthenticatedR
     return res.status(400).json({ error: result.error });
   }
 
+  emitSyncUpdate('users', 'updated', req.user!.id, req.deviceId);
   try {
     await db.saveAsync();
   } catch (_) {}
 
   const updatedUser = db.findUserById(req.user!.id);
+  const newToken = createSessionToken(req.user!.id, updatedUser?.tokenVersion ?? 0);
   return res.json({
     message: 'Password berhasil diperbarui!',
     user: sanitizeUser(updatedUser),
+    token: newToken,
   });
 });
 
 // PUT /api/auth/username (Maksimal 1 kali dalam 30 hari)
-app.put('/api/auth/username', authMiddleware, (req: AuthenticatedRequest, res) => {
+app.put('/api/auth/username', authMiddleware, async (req: AuthenticatedRequest, res) => {
   const { newUsername } = req.body;
   if (!newUsername) {
     return res.status(400).json({ error: 'Username baru wajib diisi.' });
@@ -506,7 +570,12 @@ app.put('/api/auth/username', authMiddleware, (req: AuthenticatedRequest, res) =
     });
   }
 
-  const newToken = createSessionToken(result.user!.id);
+  emitSyncUpdate('users', 'updated', result.user!.id, req.deviceId);
+  try {
+    await db.saveAsync();
+  } catch (_) {}
+
+  const newToken = createSessionToken(result.user!.id, result.user!.tokenVersion ?? 0);
   return res.json({
     message: 'Username berhasil diperbarui!',
     user: sanitizeUser(result.user),
@@ -636,13 +705,23 @@ app.get('/api/admin/students', authMiddleware, requireRole(['admin', 'kepala_sek
   return res.json(students.map(sanitizeUser));
 });
 
-// POST /api/admin/sync-local-users (Bulk upload local accounts to cloud)
-app.post('/api/admin/sync-local-users', authMiddleware, (req, res) => {
+// POST /api/admin/sync-local-users (Admin only — hormati deletedUserIds)
+app.post('/api/admin/sync-local-users', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   try {
     const { users } = req.body;
     if (Array.isArray(users) && users.length > 0) {
       const result = db.syncMultipleUsers(users);
-      return res.json({ success: true, message: 'Sinkronisasi akun berhasil', ...result });
+      if (result.added > 0 || result.updated > 0) {
+        emitSyncUpdate('users', 'updated', undefined, req.deviceId);
+        await db.saveAsync();
+      }
+      return res.json({
+        success: true,
+        message: 'Sinkronisasi akun berhasil',
+        added: result.added,
+        updated: result.updated,
+        users: result.users.map(sanitizeUser),
+      });
     }
     return res.json({ success: true, message: 'Tidak ada data untuk disinkronkan' });
   } catch (err: any) {
@@ -650,13 +729,13 @@ app.post('/api/admin/sync-local-users', authMiddleware, (req, res) => {
   }
 });
 
-// POST /api/admin/students (Pendaftaran Akun Siswa oleh Admin)
 // POST /api/admin/sync-local-tickets (Sinkronisasi tiket sandi antar perangkat)
-app.post('/api/admin/sync-local-tickets', authMiddleware, (req, res) => {
+app.post('/api/admin/sync-local-tickets', authMiddleware, async (req, res) => {
   try {
     const { tickets } = req.body;
     if (Array.isArray(tickets) && tickets.length > 0) {
       const result = db.syncMultipleTickets(tickets);
+      try { await db.saveAsync(); } catch (_) {}
       return res.json({ success: true, message: 'Sinkronisasi tiket antar perangkat berhasil', ...result });
     }
     return res.json({ success: true, message: 'Tidak ada tiket untuk disinkronkan' });
@@ -665,23 +744,147 @@ app.post('/api/admin/sync-local-tickets', authMiddleware, (req, res) => {
   }
 });
 
-app.post('/api/admin/students', authMiddleware, requireRole(['admin']), async (req, res) => {
-  const { name, username, password, gender, kelas, nisn } = req.body;
-  const result = db.createStudent({ name, username, password, gender, kelas });
+// Unified Admin Users Endpoints (Siswa, Guru, Admin, TU, Kepsek, Satpam, Panitia, Support)
+app.get('/api/admin/users', authMiddleware, requireRole(['admin', 'kepala_sekolah']), async (req, res) => {
+  try { await db.reloadFromGitHub(); } catch (_) {}
+  const users = db.getAllUsers().map(sanitizeUser);
+  const deletedUserIds = db.getDeletedUserIds();
+  res.setHeader('X-Deleted-User-Ids', JSON.stringify(deletedUserIds));
+  return res.json({ users, deletedUserIds, dbVersion: db.getSyncVersion() });
+});
 
-  if (!result.success) {
-    return res.status(400).json({ error: result.error });
+app.post('/api/admin/users', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
+  const { name, username, password, role, gender, kelas, jabatan, email, phone, isActive } = req.body;
+  const result = db.createUserByAdmin({
+    name,
+    username,
+    password,
+    role: role || 'siswa',
+    gender,
+    kelas,
+    jabatan,
+    email,
+    phone,
+    isActive,
+  });
+
+  if (!result.success || !result.user) {
+    const status = (result.error || '').includes('sudah') ? 409 : 400;
+    return res.status(status).json({ error: result.error });
   }
 
-  // Multi-device sync signal: Broadcast signal so other devices (Android APK, Web) get instant notification
   try {
     db.addRefreshSignal({
-      userId: result.user?.id || `stu_${Date.now()}`,
-      userName: result.user?.name || name || 'Siswa',
-      userUsername: result.user?.username || username || 'siswa',
+      userId: result.user.id,
+      userName: result.user.name,
+      userUsername: result.user.username,
+      userKelas: result.user.kelas || result.user.role,
+    });
+  } catch (_) {}
+
+  db.notifyAdminsAccountActivity({
+    action: 'created',
+    targetUser: result.user,
+    actor: req.user,
+    actorDeviceId: req.deviceId,
+  });
+  emitSyncUpdate('users', 'created', result.user.id, req.deviceId, { role: result.user.role });
+
+  try {
+    await db.saveAsync();
+  } catch (_) {}
+
+  return res.status(201).json({
+    message: `Akun ${result.user.name} (@${result.user.username}) berhasil ditambahkan dan tersinkron ke seluruh perangkat.`,
+    user: sanitizeUser(result.user),
+  });
+});
+
+app.put('/api/admin/users/:id', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
+  const { id } = req.params;
+  const result = db.updateStudent(id, req.body);
+  if (!result.success || !result.user) {
+    return res.status(result.conflict ? 409 : 400).json({ error: result.error });
+  }
+  db.notifyAdminsAccountActivity({
+    action: 'updated',
+    targetUser: result.user,
+    actor: req.user,
+    actorDeviceId: req.deviceId,
+  });
+  emitSyncUpdate('users', 'updated', result.user.id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
+  return res.json({ message: 'Informasi akun berhasil diperbarui.', user: sanitizeUser(result.user) });
+});
+
+app.patch('/api/admin/users/:id/toggle-active', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
+  const { id } = req.params;
+  const result = db.toggleUserActive(id);
+  if (!result.success || !result.user) {
+    return res.status(400).json({ error: result.error });
+  }
+  db.notifyAdminsAccountActivity({
+    action: 'status_changed',
+    targetUser: result.user,
+    actor: req.user,
+    actorDeviceId: req.deviceId,
+  });
+  emitSyncUpdate('users', 'status_changed', id, req.deviceId, { isActive: result.isActive });
+  try { await db.saveAsync(); } catch (_) {}
+  return res.json({
+    message: `Status akun berhasil ${result.isActive ? 'diaktifkan' : 'dinonaktifkan'}.`,
+    isActive: result.isActive,
+    user: sanitizeUser(result.user),
+  });
+});
+
+app.delete('/api/admin/users/:id', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
+  const { id } = req.params;
+  try {
+    const removal = db.deleteUserAccount(id);
+    if (!removal.deleted) return res.status(404).json({ error: 'Akun tidak ditemukan.' });
+    if (removal.removedUser) {
+      db.notifyAdminsAccountActivity({
+        action: 'deleted',
+        targetUser: removal.removedUser,
+        actor: req.user,
+        actorDeviceId: req.deviceId,
+      });
+    }
+    emitSyncUpdate('users', 'deleted', id, req.deviceId);
+    try { await db.saveAsync(); } catch (_) {}
+    return res.json({ message: 'Akun berhasil dihapus secara permanen dari database.' });
+  } catch (err: any) {
+    return res.status(400).json({ error: err?.message || 'Gagal menghapus akun.' });
+  }
+});
+
+app.post('/api/admin/students', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
+  const { name, username, password, gender, kelas, nisn, phone, email } = req.body;
+  const result = db.createStudent({ name, username, password, gender, kelas, nisn, phone, email });
+
+  if (!result.success || !result.user) {
+    const status = (result.error || '').includes('sudah') ? 409 : 400;
+    return res.status(status).json({ error: result.error });
+  }
+
+  // Multi-device sync signal
+  try {
+    db.addRefreshSignal({
+      userId: result.user.id,
+      userName: result.user.name || name || 'Siswa',
+      userUsername: result.user.username || username || 'siswa',
       userKelas: kelas,
     });
   } catch (_) {}
+
+  db.notifyAdminsAccountActivity({
+    action: 'created',
+    targetUser: result.user,
+    actor: req.user,
+    actorDeviceId: req.deviceId,
+  });
+  emitSyncUpdate('users', 'created', result.user.id, req.deviceId, { role: 'siswa' });
 
   try {
     await db.saveAsync();
@@ -694,12 +897,21 @@ app.post('/api/admin/students', authMiddleware, requireRole(['admin']), async (r
 });
 
 // PATCH /api/admin/students/:id/toggle-active
-app.patch('/api/admin/students/:id/toggle-active', authMiddleware, requireRole(['admin']), async (req, res) => {
+app.patch('/api/admin/students/:id/toggle-active', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
   const result = db.toggleUserActive(id);
   if (!result.success) {
     return res.status(400).json({ error: result.error });
   }
+  if (result.user) {
+    db.notifyAdminsAccountActivity({
+      action: 'status_changed',
+      targetUser: result.user,
+      actor: req.user,
+      actorDeviceId: req.deviceId,
+    });
+  }
+  emitSyncUpdate('users', 'status_changed', id, req.deviceId, { isActive: result.isActive });
   try {
     await db.saveAsync();
   } catch (_) {}
@@ -727,6 +939,17 @@ app.post('/api/admin/registrations/:id/approve', authMiddleware, requireRole(['a
     });
   } catch (_) {}
 
+  if (result.user) {
+    db.notifyAdminsAccountActivity({
+      action: 'status_changed',
+      targetUser: result.user,
+      actor: req.user,
+      actorDeviceId: req.deviceId,
+      detail: 'Status: Pendaftaran disetujui (ACC) & aktif.',
+    });
+  }
+  emitSyncUpdate('users', 'status_changed', id, req.deviceId);
+
   try {
     await db.saveAsync();
   } catch (_) {}
@@ -744,6 +967,7 @@ app.post('/api/admin/registrations/:id/reject', authMiddleware, requireRole(['ad
   if (!result.success) {
     return res.status(400).json({ error: result.error });
   }
+  emitSyncUpdate('users', 'status_changed', id, req.deviceId);
   try {
     await db.saveAsync();
   } catch (_) {}
@@ -753,38 +977,61 @@ app.post('/api/admin/registrations/:id/reject', authMiddleware, requireRole(['ad
   });
 });
 
-// DELETE /api/admin/students/:id
-app.put('/api/admin/students/:id', authMiddleware, requireRole(['admin']), async (req, res) => {
+// PUT /api/admin/students/:id
+app.put('/api/admin/students/:id', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
-  const { name, gender, kelas, username, phone, email, bio } = req.body;
-  const result = db.updateStudent(id, { name, gender, kelas, username, phone, email, bio });
+  const { name, gender, kelas, username, phone, email, bio, isActive, password, role, jabatan, expectedUpdatedAt } = req.body;
+  const result = db.updateStudent(id, { name, gender, kelas, username, phone, email, bio, isActive, password, role, jabatan, expectedUpdatedAt });
   if (!result.success) {
-    return res.status(400).json({ error: result.error });
+    return res.status(result.conflict ? 409 : 400).json({ error: result.error });
   }
+  if (result.user) {
+    db.notifyAdminsAccountActivity({
+      action: 'updated',
+      targetUser: result.user,
+      actor: req.user,
+      actorDeviceId: req.deviceId,
+    });
+  }
+  emitSyncUpdate('users', 'updated', id, req.deviceId);
   try {
     await db.saveAsync();
   } catch (_) {}
   return res.json({ message: 'Data siswa berhasil diperbarui.', student: sanitizeUser(result.user) });
 });
 
-app.delete('/api/admin/students/:id', authMiddleware, requireRole(['admin']), async (req, res) => {
+app.delete('/api/admin/students/:id', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
-  const ok = db.deleteStudentAccount(id);
-  if (!ok) return res.status(404).json({ error: 'Siswa tidak ditemukan.' });
   try {
-    await db.saveAsync();
-  } catch (_) {}
-  return res.json({ message: 'Akun siswa berhasil dihapus.' });
+    const removal = db.deleteUserAccount(id);
+    if (!removal.deleted) return res.status(404).json({ error: 'Siswa tidak ditemukan.' });
+    if (removal.removedUser) {
+      db.notifyAdminsAccountActivity({
+        action: 'deleted',
+        targetUser: removal.removedUser,
+        actor: req.user,
+        actorDeviceId: req.deviceId,
+      });
+    }
+    emitSyncUpdate('users', 'deleted', id, req.deviceId);
+    try {
+      await db.saveAsync();
+    } catch (_) {}
+    return res.json({ message: 'Akun siswa berhasil dihapus secara permanen.' });
+  } catch (err: any) {
+    return res.status(400).json({ error: err?.message || 'Gagal menghapus siswa.' });
+  }
 });
 
 // POST /api/admin/students/:id/reset-password
-app.post('/api/admin/students/:id/reset-password', authMiddleware, requireRole(['admin']), async (req, res) => {
+app.post('/api/admin/students/:id/reset-password', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
   const { newPassword } = req.body;
   const result = db.resetUserPassword(id, newPassword);
   if (!result.success) {
     return res.status(400).json({ error: result.error });
   }
+  emitSyncUpdate('users', 'updated', id, req.deviceId);
   try {
     await db.saveAsync();
   } catch (_) {}
@@ -828,7 +1075,7 @@ app.get('/api/subjects', authMiddleware, (req, res) => {
 });
 
 // POST /api/subjects (Admin only)
-app.post('/api/subjects', authMiddleware, requireRole(['admin']), (req, res) => {
+app.post('/api/subjects', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   const { name, code, teacherName, description, grade, schedule, imageUrl, room } = req.body;
   if (!name || !code) {
     return res.status(400).json({ error: 'Nama dan kode mata pelajaran wajib diisi.' });
@@ -843,27 +1090,33 @@ app.post('/api/subjects', authMiddleware, requireRole(['admin']), (req, res) => 
     imageUrl: imageUrl || 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&w=800&q=80',
     room: room || 'Ruang Kelas',
   });
+  emitSyncUpdate('subjects', 'created', newSub.id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
   return res.status(201).json(newSub);
 });
 
 // PUT /api/subjects/:id
-app.put('/api/subjects/:id', authMiddleware, requireRole(['admin']), (req, res) => {
+app.put('/api/subjects/:id', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
   const updated = db.updateSubject(id, req.body);
   if (!updated) {
     return res.status(404).json({ error: 'Mata pelajaran tidak ditemukan.' });
   }
+  emitSyncUpdate('subjects', 'updated', id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
   return res.json(updated);
 });
 
 // DELETE /api/subjects/:id
-app.delete('/api/subjects/:id', authMiddleware, requireRole(['admin']), (req, res) => {
+app.delete('/api/subjects/:id', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
   const ok = db.deleteSubject(id);
   if (!ok) {
     return res.status(404).json({ error: 'Mata pelajaran tidak ditemukan.' });
   }
-  return res.json({ message: 'Mata pelajaran berhasil dihapus.' });
+  emitSyncUpdate('subjects', 'deleted', id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
+  return res.json({ message: 'Mata pelajaran berhasil dihapus permanen.' });
 });
 
 // -------------------------------------------------------------
@@ -877,7 +1130,7 @@ app.get('/api/books', authMiddleware, (req, res) => {
 });
 
 // POST /api/books (Admin only)
-app.post('/api/books', authMiddleware, requireRole(['admin']), (req, res) => {
+app.post('/api/books', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   const { title, author, category, coverUrl, description, totalPages, publishedYear, content } = req.body;
   if (!title || !author) {
     return res.status(400).json({ error: 'Judul dan penulis buku wajib diisi.' });
@@ -896,27 +1149,33 @@ app.post('/api/books', authMiddleware, requireRole(['admin']), (req, res) => {
       'BAB III: Studi Kasus, Penerapan Praktis, dan Kesimpulan Akademik.',
     ],
   });
+  emitSyncUpdate('books', 'created', newBook.id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
   return res.status(201).json(newBook);
 });
 
 // PUT /api/books/:id
-app.put('/api/books/:id', authMiddleware, requireRole(['admin']), (req, res) => {
+app.put('/api/books/:id', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
   const updated = db.updateBook(id, req.body);
   if (!updated) {
     return res.status(404).json({ error: 'Buku digital tidak ditemukan.' });
   }
+  emitSyncUpdate('books', 'updated', id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
   return res.json(updated);
 });
 
 // DELETE /api/books/:id
-app.delete('/api/books/:id', authMiddleware, requireRole(['admin']), (req, res) => {
+app.delete('/api/books/:id', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
   const ok = db.deleteBook(id);
   if (!ok) {
     return res.status(404).json({ error: 'Buku tidak ditemukan.' });
   }
-  return res.json({ message: 'Buku berhasil dihapus dari katalog.' });
+  emitSyncUpdate('books', 'deleted', id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
+  return res.json({ message: 'Buku berhasil dihapus permanen dari katalog.' });
 });
 
 // -------------------------------------------------------------
@@ -924,13 +1183,14 @@ app.delete('/api/books/:id', authMiddleware, requireRole(['admin']), (req, res) 
 // -------------------------------------------------------------
 
 // GET /api/announcements
-app.get('/api/announcements', authMiddleware, (req, res) => {
+app.get('/api/announcements', authMiddleware, async (req, res) => {
+  try { await db.reloadFromGitHub(); } catch (_) {}
   const announcements = db.getAnnouncements();
   return res.json(announcements);
 });
 
 // POST /api/announcements (Admin & Support Tamvesta)
-app.post('/api/announcements', authMiddleware, requireRole(['admin', 'support']), (req: AuthenticatedRequest, res) => {
+app.post('/api/announcements', authMiddleware, requireRole(['admin', 'support']), async (req: AuthenticatedRequest, res) => {
   const { title, content, category } = req.body;
   if (!title || !content) {
     return res.status(400).json({ error: 'Judul dan isi pengumuman wajib diisi.' });
@@ -944,27 +1204,33 @@ app.post('/api/announcements', authMiddleware, requireRole(['admin', 'support'])
     authorRole: isDev ? 'Developer Resmi TAMVESTA' : (req.user?.role === 'admin' ? 'Admin Sekolah' : 'Pihak Sekolah'),
     isPublished: true,
   });
+  emitSyncUpdate('announcements', 'created', newAnn.id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
   return res.status(201).json(newAnn);
 });
 
 // PUT /api/announcements/:id
-app.put('/api/announcements/:id', authMiddleware, requireRole(['admin', 'support']), (req, res) => {
+app.put('/api/announcements/:id', authMiddleware, requireRole(['admin', 'support']), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
   const updated = db.updateAnnouncement(id, req.body);
   if (!updated) {
     return res.status(404).json({ error: 'Pengumuman tidak ditemukan.' });
   }
+  emitSyncUpdate('announcements', 'updated', id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
   return res.json(updated);
 });
 
 // DELETE /api/announcements/:id
-app.delete('/api/announcements/:id', authMiddleware, requireRole(['admin', 'support']), (req, res) => {
+app.delete('/api/announcements/:id', authMiddleware, requireRole(['admin', 'support']), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
   const ok = db.deleteAnnouncement(id);
   if (!ok) {
     return res.status(404).json({ error: 'Pengumuman tidak ditemukan.' });
   }
-  return res.json({ message: 'Pengumuman berhasil dihapus.' });
+  emitSyncUpdate('announcements', 'deleted', id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
+  return res.json({ message: 'Pengumuman berhasil dihapus permanen.' });
 });
 
 // -------------------------------------------------------------
@@ -1055,11 +1321,12 @@ app.post('/api/quizzes/generate-token', authMiddleware, requireRole(['admin', 'g
 });
 
 // POST /api/quizzes/sync-local (Sinkronisasi kuis lokal ke cloud server)
-app.post('/api/quizzes/sync-local', optionalAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+app.post('/api/quizzes/sync-local', authMiddleware, requireRole(['admin', 'guru', 'kepala_sekolah', 'tata_usaha', 'support']), async (req: AuthenticatedRequest, res) => {
   try {
     const { quizzes } = req.body;
     if (Array.isArray(quizzes) && quizzes.length > 0) {
       const result = db.syncMultipleQuizzes(quizzes);
+      emitSyncUpdate('quizzes', 'updated', undefined, req.deviceId);
       try {
         await db.saveAsync();
       } catch (_) {}
@@ -1187,36 +1454,42 @@ app.post('/api/quizzes/:id/violation', optionalAuthMiddleware, async (req: Authe
 });
 
 // PUT /api/quizzes/:id (Admin & Guru)
-app.put('/api/quizzes/:id', authMiddleware, requireRole(['admin', 'guru', 'kepala_sekolah', 'tata_usaha', 'support']), async (req, res) => {
+app.put('/api/quizzes/:id', authMiddleware, requireRole(['admin', 'guru', 'kepala_sekolah', 'tata_usaha', 'support']), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
   const updated = db.updateQuiz(id, req.body);
   if (!updated) {
     return res.status(404).json({ error: 'Quiz tidak ditemukan.' });
   }
+  emitSyncUpdate('quizzes', 'updated', id, req.deviceId);
   try {
     await db.saveAsync();
   } catch (_) {}
   return res.json(updated);
 });
 
-// DELETE /api/quizzes/:id (Admin & Guru & Offline/APK Session fallback)
-app.delete('/api/quizzes/:id', optionalAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+// DELETE /api/quizzes/:id (Admin & Guru)
+app.delete('/api/quizzes/:id', authMiddleware, requireRole(['admin', 'guru', 'kepala_sekolah', 'tata_usaha', 'support']), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
   try {
     await db.reloadFromGitHub().catch(() => {});
   } catch (_) {}
   const ok = db.deleteQuiz(id);
+  if (!ok && !(db.getDeletedQuizIds() || []).includes(id)) {
+    return res.status(404).json({ error: 'Quiz tidak ditemukan.' });
+  }
   db.clearQuizViolations(id);
+  emitSyncUpdate('quizzes', 'deleted', id, req.deviceId);
   try {
     await db.saveAsync();
   } catch (_) {}
-  return res.json({ message: 'Quiz dan seluruh pelanggaran berhasil dihapus secara permanen.', deletedQuizId: id, ok });
+  return res.json({ message: 'Quiz dan seluruh pelanggaran berhasil dihapus secara permanen.', deletedQuizId: id, ok: true });
 });
 
 // DELETE /api/quizzes/:id/violations (Bersihkan pelanggaran untuk kuis tertentu)
-app.delete('/api/quizzes/:id/violations', optionalAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+app.delete('/api/quizzes/:id/violations', authMiddleware, requireRole(['admin', 'guru', 'kepala_sekolah', 'support']), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
   db.clearQuizViolations(id);
+  emitSyncUpdate('quizzes', 'updated', id, req.deviceId);
   try {
     await db.saveAsync();
   } catch (_) {}
@@ -1224,8 +1497,9 @@ app.delete('/api/quizzes/:id/violations', optionalAuthMiddleware, async (req: Au
 });
 
 // DELETE /api/quizzes/violations (Bersihkan seluruh riwayat pelanggaran)
-app.delete('/api/quizzes/violations', optionalAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+app.delete('/api/quizzes/violations', authMiddleware, requireRole(['admin', 'guru', 'kepala_sekolah', 'support']), async (req: AuthenticatedRequest, res) => {
   db.clearQuizViolations();
+  emitSyncUpdate('quizzes', 'updated', undefined, req.deviceId);
   try {
     await db.saveAsync();
   } catch (_) {}
@@ -1233,9 +1507,10 @@ app.delete('/api/quizzes/violations', optionalAuthMiddleware, async (req: Authen
 });
 
 // DELETE /api/quizzes/violations/:id (Hapus satu pelanggaran spesifik)
-app.delete('/api/quizzes/violations/:id', optionalAuthMiddleware, async (req: AuthenticatedRequest, res) => {
+app.delete('/api/quizzes/violations/:id', authMiddleware, requireRole(['admin', 'guru', 'kepala_sekolah', 'support']), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
   db.deleteQuizViolation(id);
+  emitSyncUpdate('quizzes', 'updated', id, req.deviceId);
   try {
     await db.saveAsync();
   } catch (_) {}
@@ -1339,7 +1614,7 @@ app.get('/api/attendance/events', authMiddleware, (req, res) => {
 });
 
 // POST /api/attendance/events (Admin & Panitia)
-app.post('/api/attendance/events', authMiddleware, requireRole(['admin', 'panitia']), (req: AuthenticatedRequest, res) => {
+app.post('/api/attendance/events', authMiddleware, requireRole(['admin', 'panitia']), async (req: AuthenticatedRequest, res) => {
   const { name, category, description, location, eventDate, startTime, endTime } = req.body;
   if (!name || !eventDate) {
     return res.status(400).json({ error: 'Nama kegiatan dan tanggal kegiatan wajib diisi.' });
@@ -1357,16 +1632,20 @@ app.post('/api/attendance/events', authMiddleware, requireRole(['admin', 'paniti
     createdBy: req.user!.id,
   });
 
+  emitSyncUpdate('events', 'created', newEvent.id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
   return res.status(201).json(newEvent);
 });
 
 // PATCH /api/attendance/events/:id/toggle-session (Buka / Tutup Sesi)
-app.patch('/api/attendance/events/:id/toggle-session', authMiddleware, requireRole(['admin', 'panitia']), (req, res) => {
+app.patch('/api/attendance/events/:id/toggle-session', authMiddleware, requireRole(['admin', 'panitia']), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
   const result = db.toggleEventSession(id);
   if (!result.success) {
     return res.status(400).json({ error: result.error });
   }
+  emitSyncUpdate('events', 'updated', id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
   return res.json({
     message: `Sesi absensi kegiatan berhasil ${result.isOpen ? 'DIBUKA' : 'DITUTUP'}.`,
     isOpen: result.isOpen,
@@ -1374,13 +1653,15 @@ app.patch('/api/attendance/events/:id/toggle-session', authMiddleware, requireRo
 });
 
 // DELETE /api/attendance/events/:id
-app.delete('/api/attendance/events/:id', authMiddleware, requireRole(['admin', 'panitia']), (req, res) => {
+app.delete('/api/attendance/events/:id', authMiddleware, requireRole(['admin', 'panitia']), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
   const ok = db.deleteAttendanceEvent(id);
   if (!ok) {
     return res.status(404).json({ error: 'Kegiatan tidak ditemukan.' });
   }
-  return res.json({ message: 'Kegiatan berhasil dihapus.' });
+  emitSyncUpdate('events', 'deleted', id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
+  return res.json({ message: 'Kegiatan berhasil dihapus permanen.' });
 });
 
 // POST /api/attendance/scan (Panitia Laptop Scan Webhook)
@@ -1516,6 +1797,7 @@ app.post('/api/posts', authMiddleware, async (req: AuthenticatedRequest, res) =>
     mediaName: mediaName || undefined,
   });
 
+  emitSyncUpdate('posts', 'created', newPost.id, req.deviceId);
   try {
     await db.saveAsync();
   } catch (_) {}
@@ -1529,6 +1811,7 @@ app.delete('/api/posts/:id', authMiddleware, async (req: AuthenticatedRequest, r
   if (!success) {
     return res.status(403).json({ error: 'Postingan tidak ditemukan atau Anda tidak memiliki izin untuk menghapusnya.' });
   }
+  emitSyncUpdate('posts', 'deleted', req.params.id, req.deviceId);
   try {
     await db.saveAsync();
   } catch (_) {}
@@ -1804,6 +2087,7 @@ app.post('/api/stories', authMiddleware, async (req: AuthenticatedRequest, res) 
     caption,
   });
 
+  emitSyncUpdate('stories', 'created', newStory.id, req.deviceId);
   try {
     await db.saveAsync();
   } catch (_) {}
@@ -1817,10 +2101,11 @@ app.delete('/api/stories/:id', authMiddleware, async (req: AuthenticatedRequest,
   if (!success) {
     return res.status(403).json({ error: 'Story tidak ditemukan atau Anda tidak memiliki izin untuk menghapusnya.' });
   }
+  emitSyncUpdate('stories', 'deleted', req.params.id, req.deviceId);
   try {
     await db.saveAsync();
   } catch (_) {}
-  return res.json({ message: 'Story berhasil dihapus.' });
+  return res.json({ message: 'Story berhasil dihapus permanen.' });
 });
 
 // -------------------------------------------------------------
@@ -1834,32 +2119,35 @@ app.get('/api/notes', authMiddleware, (req: AuthenticatedRequest, res) => {
 });
 
 // POST /api/notes - Buat catatan baru
-app.post('/api/notes', authMiddleware, (req: AuthenticatedRequest, res) => {
+app.post('/api/notes', authMiddleware, async (req: AuthenticatedRequest, res) => {
   const { title, content, color } = req.body;
   if (!content?.trim() && !title?.trim()) {
     return res.status(400).json({ error: 'Judul atau isi catatan tidak boleh kosong.' });
   }
   const note = db.createNote(req.user!.id, { title, content, color });
+  try { await db.saveAsync(); } catch (_) {}
   return res.status(201).json(note);
 });
 
 // PUT /api/notes/:id - Edit catatan
-app.put('/api/notes/:id', authMiddleware, (req: AuthenticatedRequest, res) => {
+app.put('/api/notes/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
   const { title, content, color } = req.body;
   const updated = db.updateNote(req.params.id, req.user!.id, { title, content, color });
   if (!updated) {
     return res.status(404).json({ error: 'Catatan tidak ditemukan.' });
   }
+  try { await db.saveAsync(); } catch (_) {}
   return res.json(updated);
 });
 
 // DELETE /api/notes/:id - Hapus catatan
-app.delete('/api/notes/:id', authMiddleware, (req: AuthenticatedRequest, res) => {
+app.delete('/api/notes/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
   const ok = db.deleteNote(req.params.id, req.user!.id);
   if (!ok) {
     return res.status(404).json({ error: 'Catatan tidak ditemukan.' });
   }
-  return res.json({ message: 'Catatan berhasil dihapus.' });
+  try { await db.saveAsync(); } catch (_) {}
+  return res.json({ message: 'Catatan berhasil dihapus permanen.' });
 });
 
 // -------------------------------------------------------------
@@ -1867,26 +2155,31 @@ app.delete('/api/notes/:id', authMiddleware, (req: AuthenticatedRequest, res) =>
 // -------------------------------------------------------------
 
 // GET /api/notifications - Ambil daftar notifikasi
-app.get('/api/notifications', authMiddleware, (req: AuthenticatedRequest, res) => {
-  const notifs = db.getNotifications(req.user!.id, req.user!.role, req.user!.kelas);
+app.get('/api/notifications', authMiddleware, async (req: AuthenticatedRequest, res) => {
+  try { await db.reloadFromGitHub(); } catch (_) {}
+  const notifs = db.getNotifications(req.user!.id, req.user!.role, req.user!.kelas, req.deviceId);
   return res.json(notifs);
 });
 
 // PATCH /api/notifications/:id/read - Tandai notifikasi sudah dibaca
-app.patch('/api/notifications/:id/read', authMiddleware, (req: AuthenticatedRequest, res) => {
+app.patch('/api/notifications/:id/read', authMiddleware, async (req: AuthenticatedRequest, res) => {
   db.markNotificationRead(req.params.id, req.user!.id);
+  try { await db.saveAsync(); } catch (_) {}
   return res.json({ success: true });
 });
 
 // POST /api/notifications/read-all - Tandai semua notifikasi sudah dibaca
-app.post('/api/notifications/read-all', authMiddleware, (req: AuthenticatedRequest, res) => {
+app.post('/api/notifications/read-all', authMiddleware, async (req: AuthenticatedRequest, res) => {
   db.markAllNotificationsRead(req.user!.id);
+  try { await db.saveAsync(); } catch (_) {}
   return res.json({ success: true });
 });
 
 // DELETE /api/notifications/:id - Hapus notifikasi dari daftar pengguna
-app.delete('/api/notifications/:id', authMiddleware, (req: AuthenticatedRequest, res) => {
+app.delete('/api/notifications/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
   db.deleteNotificationForUser(req.params.id, req.user!.id);
+  emitSyncUpdate('notifications', 'deleted', req.params.id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
   return res.json({ message: 'Notifikasi berhasil dihapus dari daftar Anda.' });
 });
 
@@ -1919,6 +2212,8 @@ app.post('/api/notifications', authMiddleware, requireRole(['admin', 'tata_usaha
       });
     } catch (_) {}
 
+    emitSyncUpdate('notifications', 'created', newNotif.id, req.deviceId);
+
     try {
       await db.saveAsync();
     } catch (err) {
@@ -1927,7 +2222,7 @@ app.post('/api/notifications', authMiddleware, requireRole(['admin', 'tata_usaha
 
     return res.status(201).json({
       success: true,
-      message: 'Notifikasi berhasil diterbitkan dan masuk ke Pusat Kontrol siswa!',
+      message: 'Notifikasi berhasil diterbitkan dan masuk ke Pusat Kontrol!',
       notification: newNotif,
     });
   } catch (err: any) {
@@ -1936,17 +2231,21 @@ app.post('/api/notifications', authMiddleware, requireRole(['admin', 'tata_usaha
 });
 
 // GET /api/admin/notifications (Daftar seluruh riwayat siaran notifikasi)
-app.get('/api/admin/notifications', authMiddleware, requireRole(['admin', 'tata_usaha', 'kepala_sekolah', 'guru', 'support']), async (req, res) => {
+app.get('/api/admin/notifications', authMiddleware, requireRole(['admin', 'tata_usaha', 'kepala_sekolah', 'guru', 'support']), async (req: AuthenticatedRequest, res) => {
   try {
     await db.reloadFromGitHub();
   } catch (_) {}
-  return res.json(db.getAllNotificationsRaw());
+  const all = db.getAllNotificationsRaw();
+  // Hanya role 'admin' yang berhak melihat notifikasi internal khusus Admin
+  const filtered = req.user!.role === 'admin' ? all : all.filter((n) => n.targetRole !== 'admin' && n.type !== 'admin_account_event');
+  return res.json(filtered);
 });
 
 // DELETE /api/admin/notifications/:id (Hapus siaran notifikasi oleh Admin/TU)
-app.delete('/api/admin/notifications/:id', authMiddleware, requireRole(['admin', 'tata_usaha', 'kepala_sekolah', 'guru', 'support']), async (req, res) => {
+app.delete('/api/admin/notifications/:id', authMiddleware, requireRole(['admin', 'tata_usaha', 'kepala_sekolah', 'guru', 'support']), async (req: AuthenticatedRequest, res) => {
   const ok = db.deleteNotificationAdmin(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Notifikasi tidak ditemukan.' });
+  emitSyncUpdate('notifications', 'deleted', req.params.id, req.deviceId);
   try {
     await db.saveAsync();
   } catch (_) {}
@@ -1956,7 +2255,8 @@ app.delete('/api/admin/notifications/:id', authMiddleware, requireRole(['admin',
 // -------------------------------------------------------------
 // ARTIKEL GURU & METODE PEMBELAJARAN ENDPOINTS
 // -------------------------------------------------------------
-app.get('/api/articles', (req, res) => {
+app.get('/api/articles', async (req, res) => {
+  try { await db.reloadFromGitHub(); } catch (_) {}
   const category = req.query.category as string | undefined;
   const onlyPublished = req.query.onlyPublished === 'true';
   const list = db.getArticles(category, onlyPublished);
@@ -1969,7 +2269,7 @@ app.get('/api/articles/:id', (req, res) => {
   return res.json(art);
 });
 
-app.post('/api/articles', authMiddleware, requireRole(['guru', 'admin', 'kepala_sekolah']), (req: AuthenticatedRequest, res) => {
+app.post('/api/articles', authMiddleware, requireRole(['guru', 'admin', 'kepala_sekolah']), async (req: AuthenticatedRequest, res) => {
   const { title, summary, content, category, coverUrl, isPublished } = req.body;
   if (!title || !content) {
     return res.status(400).json({ error: 'Judul dan konten artikel wajib diisi' });
@@ -1986,22 +2286,28 @@ app.post('/api/articles', authMiddleware, requireRole(['guru', 'admin', 'kepala_
     coverUrl,
     isPublished: isPublished !== false,
   });
+  emitSyncUpdate('articles', 'created', created.id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
   return res.status(201).json(created);
 });
 
-app.put('/api/articles/:id', authMiddleware, requireRole(['guru', 'admin', 'kepala_sekolah']), (req: AuthenticatedRequest, res) => {
+app.put('/api/articles/:id', authMiddleware, requireRole(['guru', 'admin', 'kepala_sekolah']), async (req: AuthenticatedRequest, res) => {
   try {
     const updated = db.updateArticle(req.params.id, req.body);
+    emitSyncUpdate('articles', 'updated', req.params.id, req.deviceId);
+    try { await db.saveAsync(); } catch (_) {}
     return res.json(updated);
   } catch (e: any) {
     return res.status(404).json({ error: e.message });
   }
 });
 
-app.delete('/api/articles/:id', authMiddleware, requireRole(['guru', 'admin', 'kepala_sekolah']), (req: AuthenticatedRequest, res) => {
+app.delete('/api/articles/:id', authMiddleware, requireRole(['guru', 'admin', 'kepala_sekolah']), async (req: AuthenticatedRequest, res) => {
   const success = db.deleteArticle(req.params.id);
   if (!success) return res.status(404).json({ error: 'Artikel tidak ditemukan' });
-  return res.json({ message: 'Artikel berhasil dihapus' });
+  emitSyncUpdate('articles', 'deleted', req.params.id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
+  return res.json({ message: 'Artikel berhasil dihapus permanen' });
 });
 
 // -------------------------------------------------------------
@@ -2018,7 +2324,7 @@ app.get('/api/class-attendance', authMiddleware, requireRole(['guru', 'admin', '
   return res.json(list);
 });
 
-app.post('/api/class-attendance', authMiddleware, requireRole(['guru', 'admin']), (req: AuthenticatedRequest, res) => {
+app.post('/api/class-attendance', authMiddleware, requireRole(['guru', 'admin']), async (req: AuthenticatedRequest, res) => {
   const { entries } = req.body;
   if (!Array.isArray(entries) || entries.length === 0) {
     return res.status(400).json({ error: 'Data absensi tidak valid' });
@@ -2030,6 +2336,8 @@ app.post('/api/class-attendance', authMiddleware, requireRole(['guru', 'admin'])
     createdAt: new Date().toISOString(),
   }));
   const saved = db.recordClassAttendance(processed);
+  emitSyncUpdate('events', 'updated', undefined, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
   return res.status(201).json({ message: 'Absensi kelas berhasil disimpan', count: saved.length });
 });
 
@@ -2044,30 +2352,38 @@ app.get('/api/tu/bills', authMiddleware, (req: AuthenticatedRequest, res) => {
   return res.json(bills);
 });
 
-app.post('/api/tu/bills', authMiddleware, requireRole(['admin', 'tata_usaha']), (req, res) => {
+app.post('/api/tu/bills', authMiddleware, requireRole(['admin', 'tata_usaha']), async (req: AuthenticatedRequest, res) => {
   const bill = db.createTuitionBill(req.body);
+  emitSyncUpdate('tu_bills', 'created', bill.id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
   return res.status(201).json(bill);
 });
 
-app.put('/api/tu/bills/:id', authMiddleware, (req: AuthenticatedRequest, res) => {
+app.put('/api/tu/bills/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     // Siswa hanya boleh konfirmasi/upload bukti bayar
     if (req.user!.role === 'siswa') {
       const allowed = { status: 'menunggu_verifikasi' as const, paymentProofUrl: req.body.paymentProofUrl, notes: req.body.notes };
       const updated = db.updateTuitionBill(req.params.id, allowed);
+      emitSyncUpdate('tu_bills', 'updated', req.params.id, req.deviceId);
+      try { await db.saveAsync(); } catch (_) {}
       return res.json(updated);
     }
     const updated = db.updateTuitionBill(req.params.id, req.body);
+    emitSyncUpdate('tu_bills', 'updated', req.params.id, req.deviceId);
+    try { await db.saveAsync(); } catch (_) {}
     return res.json(updated);
   } catch (e: any) {
     return res.status(404).json({ error: e.message });
   }
 });
 
-app.delete('/api/tu/bills/:id', authMiddleware, requireRole(['admin', 'tata_usaha']), (req, res) => {
+app.delete('/api/tu/bills/:id', authMiddleware, requireRole(['admin', 'tata_usaha']), async (req: AuthenticatedRequest, res) => {
   const ok = db.deleteTuitionBill(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Tagihan tidak ditemukan' });
-  return res.json({ message: 'Tagihan berhasil dihapus' });
+  emitSyncUpdate('tu_bills', 'deleted', req.params.id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
+  return res.json({ message: 'Tagihan berhasil dihapus permanen' });
 });
 
 app.get('/api/tu/transactions', authMiddleware, requireRole(['admin', 'tata_usaha', 'kepala_sekolah']), (req, res) => {
@@ -2075,11 +2391,13 @@ app.get('/api/tu/transactions', authMiddleware, requireRole(['admin', 'tata_usah
   return res.json(trxs);
 });
 
-app.post('/api/tu/transactions', authMiddleware, requireRole(['admin', 'tata_usaha']), (req: AuthenticatedRequest, res) => {
+app.post('/api/tu/transactions', authMiddleware, requireRole(['admin', 'tata_usaha']), async (req: AuthenticatedRequest, res) => {
   const trx = db.createTuitionTransaction({
     ...req.body,
     verifiedBy: req.user!.name,
   });
+  emitSyncUpdate('tu_transactions', 'created', trx.id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
   return res.status(201).json(trx);
 });
 
@@ -2088,15 +2406,19 @@ app.get('/api/tu/documents', authMiddleware, requireRole(['admin', 'tata_usaha',
   return res.json(docs);
 });
 
-app.post('/api/tu/documents', authMiddleware, requireRole(['admin', 'tata_usaha']), (req, res) => {
+app.post('/api/tu/documents', authMiddleware, requireRole(['admin', 'tata_usaha']), async (req: AuthenticatedRequest, res) => {
   const doc = db.createTuDocument(req.body);
+  emitSyncUpdate('tu_documents', 'created', doc.id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
   return res.status(201).json(doc);
 });
 
-app.delete('/api/tu/documents/:id', authMiddleware, requireRole(['admin', 'tata_usaha']), (req, res) => {
+app.delete('/api/tu/documents/:id', authMiddleware, requireRole(['admin', 'tata_usaha']), async (req: AuthenticatedRequest, res) => {
   const ok = db.deleteTuDocument(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
-  return res.json({ message: 'Dokumen berhasil dihapus' });
+  emitSyncUpdate('tu_documents', 'deleted', req.params.id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
+  return res.json({ message: 'Dokumen berhasil dihapus permanen' });
 });
 
 app.get('/api/tu/chat', authMiddleware, (req: AuthenticatedRequest, res) => {
@@ -2105,7 +2427,7 @@ app.get('/api/tu/chat', authMiddleware, (req: AuthenticatedRequest, res) => {
   return res.json(msgs);
 });
 
-app.post('/api/tu/chat', authMiddleware, (req: AuthenticatedRequest, res) => {
+app.post('/api/tu/chat', authMiddleware, async (req: AuthenticatedRequest, res) => {
   const { message, proofUrl, billId, studentId, studentName, studentKelas } = req.body;
   const isStudent = req.user!.role === 'siswa';
 
@@ -2119,76 +2441,123 @@ app.post('/api/tu/chat', authMiddleware, (req: AuthenticatedRequest, res) => {
     proofUrl,
     billId,
   });
+  emitSyncUpdate('dm', 'created', msg.id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
   return res.status(201).json(msg);
 });
 
 // GET /api/tu/monthly-reports - Ambil laporan bulanan TU
-app.get('/api/tu/monthly-reports', authMiddleware, (req, res) => {
+app.get('/api/tu/monthly-reports', authMiddleware, async (_req, res) => {
+  try { await db.reloadFromGitHub(); } catch (_) {}
   return res.json(db.getTuMonthlyReports());
 });
 
 // POST /api/tu/monthly-reports - Kirim laporan bulanan TU ke Pemimpin & Kepala Sekolah
-app.post('/api/tu/monthly-reports', authMiddleware, requireRole(['admin', 'tata_usaha']), (req: AuthenticatedRequest, res) => {
+app.post('/api/tu/monthly-reports', authMiddleware, requireRole(['admin', 'tata_usaha']), async (req: AuthenticatedRequest, res) => {
   const report = db.createTuMonthlyReport({
     ...req.body,
     sentBy: req.user?.name,
     sentByUsername: req.user?.username,
   });
+  emitSyncUpdate('tu_reports', 'created', report.id, req.deviceId);
+  try { await db.saveAsync(); } catch (_) {}
   return res.json({ message: 'Laporan bulanan berhasil dikirimkan ke Pemimpin & Kepala Sekolah!', report });
 });
 
 // -------------------------------------------------------------
 // MANAJEMEN PENGGUNA (GURU, ADMINISTRASI, ALUMNI & CENTANG HIJAU/BIRU)
 // -------------------------------------------------------------
-app.post('/api/admin/teachers', authMiddleware, requireRole(['admin', 'kepala_sekolah']), async (req, res) => {
+app.post('/api/admin/teachers', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   try {
     const teacher = db.createTeacherAccount(req.body);
+    db.notifyAdminsAccountActivity({
+      action: 'created',
+      targetUser: teacher,
+      actor: req.user,
+      actorDeviceId: req.deviceId,
+    });
+    emitSyncUpdate('users', 'created', teacher.id, req.deviceId, { role: 'guru' });
     try {
       await db.saveAsync();
     } catch (_) {}
-    return res.status(201).json({ message: 'Akun guru berhasil dibuat', teacher });
+    return res.status(201).json({ message: 'Akun guru berhasil dibuat', teacher: sanitizeUser(teacher) });
   } catch (e: any) {
-    return res.status(400).json({ error: e.message });
+    const status = (e.message || '').includes('sudah') ? 409 : 400;
+    return res.status(status).json({ error: e.message });
   }
 });
 
 // Pembuatan Akun Staf/Administrasi Antarperangkat
-app.post('/api/admin/staff', authMiddleware, requireRole(['admin']), async (req, res) => {
+app.post('/api/admin/staff', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   try {
     const staff = db.createStaffAccount(req.body);
+    db.notifyAdminsAccountActivity({
+      action: 'created',
+      targetUser: staff,
+      actor: req.user,
+      actorDeviceId: req.deviceId,
+    });
+    emitSyncUpdate('users', 'created', staff.id, req.deviceId, { role: staff.role });
     try {
       await db.saveAsync();
     } catch (_) {}
-    return res.status(201).json({ message: `Akun ${staff.role.toUpperCase()} berhasil dibuat dan disinkronkan ke seluruh perangkat.`, staff });
+    return res.status(201).json({
+      message: `Akun ${staff.role.toUpperCase()} berhasil dibuat dan disinkronkan ke seluruh perangkat.`,
+      staff: sanitizeUser(staff),
+      teacher: sanitizeUser(staff),
+    });
   } catch (e: any) {
-    return res.status(400).json({ error: e.message });
+    const status = (e.message || '').includes('sudah') ? 409 : 400;
+    return res.status(status).json({ error: e.message });
   }
 });
 
-app.put('/api/admin/teachers/:id', authMiddleware, requireRole(['admin', 'kepala_sekolah']), async (req, res) => {
+app.put('/api/admin/teachers/:id', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   try {
     const teacher = db.updateTeacherAccount(req.params.id, req.body);
+    db.notifyAdminsAccountActivity({
+      action: 'updated',
+      targetUser: teacher,
+      actor: req.user,
+      actorDeviceId: req.deviceId,
+    });
+    emitSyncUpdate('users', 'updated', teacher.id, req.deviceId);
     try {
       await db.saveAsync();
     } catch (_) {}
-    return res.json({ message: 'Akun guru berhasil diperbarui', teacher });
+    return res.json({ message: 'Akun guru berhasil diperbarui', teacher: sanitizeUser(teacher) });
   } catch (e: any) {
-    return res.status(400).json({ error: e.message });
+    const status = (e.message || '').includes('sudah') || (e.message || '').includes('diperbarui') ? 409 : 400;
+    return res.status(status).json({ error: e.message });
   }
 });
 
-app.delete('/api/admin/teachers/:id', authMiddleware, requireRole(['admin']), async (req, res) => {
-  const ok = db.deleteTeacherAccount(req.params.id);
-  if (!ok) return res.status(404).json({ error: 'Akun guru tidak ditemukan' });
+app.delete('/api/admin/teachers/:id', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   try {
-    await db.saveAsync();
-  } catch (_) {}
-  return res.json({ message: 'Akun guru berhasil dihapus dari sistem' });
+    const removal = db.deleteUserAccount(req.params.id);
+    if (!removal.deleted) return res.status(404).json({ error: 'Akun guru tidak ditemukan' });
+    if (removal.removedUser) {
+      db.notifyAdminsAccountActivity({
+        action: 'deleted',
+        targetUser: removal.removedUser,
+        actor: req.user,
+        actorDeviceId: req.deviceId,
+      });
+    }
+    emitSyncUpdate('users', 'deleted', req.params.id, req.deviceId);
+    try {
+      await db.saveAsync();
+    } catch (_) {}
+    return res.json({ message: 'Akun berhasil dihapus secara permanen dari sistem' });
+  } catch (e: any) {
+    return res.status(400).json({ error: e.message || 'Gagal menghapus akun' });
+  }
 });
 
-app.patch('/api/admin/users/:id/verified', authMiddleware, requireRole(['admin']), async (req, res) => {
+app.patch('/api/admin/users/:id/verified', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   try {
     const result = db.toggleVerifiedBadge(req.params.id);
+    emitSyncUpdate('users', 'updated', req.params.id, req.deviceId);
     try {
       await db.saveAsync();
     } catch (_) {}
@@ -2198,9 +2567,10 @@ app.patch('/api/admin/users/:id/verified', authMiddleware, requireRole(['admin']
   }
 });
 
-app.patch('/api/admin/students/:id/alumni', authMiddleware, requireRole(['admin']), async (req, res) => {
+app.patch('/api/admin/students/:id/alumni', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   try {
     const result = db.toggleAlumniStatus(req.params.id);
+    emitSyncUpdate('users', 'updated', req.params.id, req.deviceId);
     try {
       await db.saveAsync();
     } catch (_) {}
@@ -2224,7 +2594,7 @@ app.get('/api/schedules', optionalAuthMiddleware, async (req: AuthenticatedReque
 
 app.post('/api/schedules', authMiddleware, requireRole(['admin', 'tata_usaha', 'kepala_sekolah']), async (req: AuthenticatedRequest, res) => {
   try {
-    const { grade, academicYear, title, description, imageUrl, isPublished } = req.body;
+    const { grade, imageUrl } = req.body;
     if (!grade || !imageUrl) {
       return res.status(400).json({ error: 'Kelas dan foto jadwal wajib diisi.' });
     }
@@ -2233,6 +2603,7 @@ app.post('/api/schedules', authMiddleware, requireRole(['admin', 'tata_usaha', '
       createdBy: req.user!.id,
       createdByName: req.user!.name,
     });
+    emitSyncUpdate('schedules', 'created', schedule.id, req.deviceId);
     try {
       await db.saveAsync();
     } catch (_) {}
@@ -2250,6 +2621,7 @@ app.put('/api/schedules/:id', authMiddleware, requireRole(['admin', 'tata_usaha'
       createdBy: req.user!.id,
       createdByName: req.user!.name,
     });
+    emitSyncUpdate('schedules', 'updated', schedule.id, req.deviceId);
     try {
       await db.saveAsync();
     } catch (_) {}
@@ -2262,10 +2634,11 @@ app.put('/api/schedules/:id', authMiddleware, requireRole(['admin', 'tata_usaha'
 app.delete('/api/schedules/:id', authMiddleware, requireRole(['admin', 'tata_usaha', 'kepala_sekolah']), async (req: AuthenticatedRequest, res) => {
   const ok = db.deleteSchedule(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Jadwal tidak ditemukan.' });
+  emitSyncUpdate('schedules', 'deleted', req.params.id, req.deviceId);
   try {
     await db.saveAsync();
   } catch (_) {}
-  return res.json({ message: 'Jadwal pelajaran berhasil dihapus.' });
+  return res.json({ message: 'Jadwal pelajaran berhasil dihapus secara permanen.' });
 });
 
 // -------------------------------------------------------------
@@ -2285,6 +2658,7 @@ app.post('/api/devices/session', authMiddleware, async (req: AuthenticatedReques
       userName: req.user!.name,
       userRole: req.user!.role,
     });
+    emitSyncUpdate('devices', 'updated', session.id, req.deviceId);
     try {
       await db.saveAsync();
     } catch (_) {}
@@ -2298,6 +2672,7 @@ app.delete('/api/devices/:id', authMiddleware, async (req: AuthenticatedRequest,
   const isAdmin = req.user?.role === 'admin';
   const ok = db.deleteDeviceSession(req.params.id, isAdmin ? undefined : req.user!.id);
   if (!ok) return res.status(404).json({ error: 'Sesi perangkat tidak ditemukan.' });
+  emitSyncUpdate('devices', 'deleted', req.params.id, req.deviceId);
   try {
     await db.saveAsync();
   } catch (_) {}
@@ -2312,14 +2687,16 @@ app.get('/api/admin/devices', authMiddleware, requireRole(['admin', 'support']),
 // -------------------------------------------------------------
 // MANAJEMEN KELAS & WALI KELAS (SCHOOL CLASSES)
 // -------------------------------------------------------------
-app.get('/api/classes', optionalAuthMiddleware, (req, res) => {
+app.get('/api/classes', optionalAuthMiddleware, async (req, res) => {
+  try { await db.reloadFromGitHub().catch(() => {}); } catch (_) {}
   const classes = db.getSchoolClasses();
   return res.json({ classes });
 });
 
-app.post('/api/classes', authMiddleware, requireRole(['admin', 'tata_usaha', 'kepala_sekolah']), async (req, res) => {
+app.post('/api/classes', authMiddleware, requireRole(['admin', 'tata_usaha', 'kepala_sekolah']), async (req: AuthenticatedRequest, res) => {
   try {
     const item = db.saveSchoolClass(req.body);
+    emitSyncUpdate('classes', 'updated', item.id, req.deviceId);
     try {
       await db.saveAsync();
     } catch (_) {}
@@ -2329,13 +2706,14 @@ app.post('/api/classes', authMiddleware, requireRole(['admin', 'tata_usaha', 'ke
   }
 });
 
-app.delete('/api/classes/:id', authMiddleware, requireRole(['admin']), async (req, res) => {
+app.delete('/api/classes/:id', authMiddleware, requireRole(['admin']), async (req: AuthenticatedRequest, res) => {
   const ok = db.deleteSchoolClass(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Kelas tidak ditemukan.' });
+  emitSyncUpdate('classes', 'deleted', req.params.id, req.deviceId);
   try {
     await db.saveAsync();
   } catch (_) {}
-  return res.json({ message: 'Kelas berhasil dihapus.' });
+  return res.json({ message: 'Kelas berhasil dihapus permanen.' });
 });
 
 // -------------------------------------------------------------
@@ -3149,11 +3527,13 @@ app.post('/api/dm/messages/:id/react', authMiddleware, (req: AuthenticatedReques
   }
 });
 
-app.delete('/api/dm/messages/:id', authMiddleware, (req: AuthenticatedRequest, res) => {
+app.delete('/api/dm/messages/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
-    const ok = db.deleteDirectMessage(id, req.user!.id);
+    const isAdmin = req.user!.role === 'admin';
+    const ok = db.deleteDirectMessage(id, req.user!.id, isAdmin);
     if (!ok) return res.status(404).json({ error: 'Pesan tidak ditemukan atau tidak dapat dihapus.' });
+    try { await db.saveAsync(); } catch (_) {}
     return res.json({ success: true });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -3206,8 +3586,9 @@ app.delete('/api/notes', authMiddleware, (req: AuthenticatedRequest, res) => {
 // LOST AND FOUND (BARANG HILANG & DITEMUKAN)
 // =============================================================
 
-app.get('/api/lost-found', optionalAuthMiddleware, (req, res) => {
+app.get('/api/lost-found', optionalAuthMiddleware, async (req, res) => {
   try {
+    try { await db.reloadFromGitHub(); } catch (_) {}
     const { type, status } = req.query;
     const items = db.getLostFoundItems({
       type: type as any,
@@ -3219,7 +3600,7 @@ app.get('/api/lost-found', optionalAuthMiddleware, (req, res) => {
   }
 });
 
-app.post('/api/lost-found', authMiddleware, (req: AuthenticatedRequest, res) => {
+app.post('/api/lost-found', authMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     const { type, itemName, category, photoUrl, description, location, dateTime, storageStatus, additionalNotes } = req.body;
     if (!itemName || !description || !location) {
@@ -3240,24 +3621,40 @@ app.post('/api/lost-found', authMiddleware, (req: AuthenticatedRequest, res) => 
       storageStatus,
       additionalNotes,
     });
+    emitSyncUpdate('lost_found', 'created', item.id, req.deviceId);
+    try { await db.saveAsync(); } catch (_) {}
     return res.json({ item });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-app.patch('/api/lost-found/:id', authMiddleware, (req: AuthenticatedRequest, res) => {
+app.patch('/api/lost-found/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const item = db.updateLostFoundItem(id, req.body);
     if (!item) return res.status(404).json({ error: 'Barang tidak ditemukan.' });
+    emitSyncUpdate('lost_found', 'updated', id, req.deviceId);
+    try { await db.saveAsync(); } catch (_) {}
     return res.json({ item });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/lost-found/:id/claim', authMiddleware, (req: AuthenticatedRequest, res) => {
+app.delete('/api/lost-found/:id', authMiddleware, requireRole(['admin', 'satpam', 'tata_usaha']), async (req: AuthenticatedRequest, res) => {
+  try {
+    const ok = db.deleteLostFoundItem(req.params.id);
+    if (!ok) return res.status(404).json({ error: 'Data barang tidak ditemukan.' });
+    emitSyncUpdate('lost_found', 'deleted', req.params.id, req.deviceId);
+    try { await db.saveAsync(); } catch (_) {}
+    return res.json({ message: 'Data barang berhasil dihapus permanen.' });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/lost-found/:id/claim', authMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const { reason, identifyingFeatures, additionalInfo } = req.body;
@@ -3274,13 +3671,15 @@ app.post('/api/lost-found/:id/claim', authMiddleware, (req: AuthenticatedRequest
       additionalInfo,
     });
     if (!item) return res.status(404).json({ error: 'Barang tidak ditemukan.' });
+    emitSyncUpdate('lost_found', 'updated', id, req.deviceId);
+    try { await db.saveAsync(); } catch (_) {}
     return res.json({ item });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-app.patch('/api/lost-found/:id/claims/:claimId', authMiddleware, requireRole(['satpam', 'admin', 'guru', 'tata_usaha']), (req: AuthenticatedRequest, res) => {
+app.patch('/api/lost-found/:id/claims/:claimId', authMiddleware, requireRole(['satpam', 'admin', 'guru', 'tata_usaha']), async (req: AuthenticatedRequest, res) => {
   try {
     const { id, claimId } = req.params;
     const { status, satpamNotes, officerNotes } = req.body;
@@ -3291,6 +3690,8 @@ app.patch('/api/lost-found/:id/claims/:claimId', authMiddleware, requireRole(['s
       verifiedBy: req.user!.name,
     });
     if (!item) return res.status(404).json({ error: 'Klaim atau barang tidak ditemukan.' });
+    emitSyncUpdate('lost_found', 'updated', id, req.deviceId);
+    try { await db.saveAsync(); } catch (_) {}
     return res.json({ item });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -3301,8 +3702,9 @@ app.patch('/api/lost-found/:id/claims/:claimId', authMiddleware, requireRole(['s
 // PERIZINAN TEMPAT DAN KEGIATAN
 // =============================================================
 
-app.get('/api/activity-permissions', authMiddleware, (req: AuthenticatedRequest, res) => {
+app.get('/api/activity-permissions', authMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
+    try { await db.reloadFromGitHub(); } catch (_) {}
     const isOfficer = ['satpam', 'kepala_sekolah', 'admin', 'guru'].includes(req.user!.role);
     const filterId = isOfficer ? undefined : req.user!.id;
     const permissions = db.getActivityPermissions(filterId);
@@ -3312,7 +3714,7 @@ app.get('/api/activity-permissions', authMiddleware, (req: AuthenticatedRequest,
   }
 });
 
-app.post('/api/activity-permissions', authMiddleware, (req: AuthenticatedRequest, res) => {
+app.post('/api/activity-permissions', authMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     const {
       organizationOrClass,
@@ -3348,13 +3750,15 @@ app.post('/api/activity-permissions', authMiddleware, (req: AuthenticatedRequest
       additionalNotes,
     });
 
+    emitSyncUpdate('permissions', 'created', perm.id, req.deviceId);
+    try { await db.saveAsync(); } catch (_) {}
     return res.json({ permission: perm });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/activity-permissions/:id/satpam-review', authMiddleware, requireRole(['satpam', 'admin']), (req: AuthenticatedRequest, res) => {
+app.post('/api/activity-permissions/:id/satpam-review', authMiddleware, requireRole(['satpam', 'admin']), async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const { safetyChecked, facilityAvailable, notes } = req.body;
@@ -3365,13 +3769,15 @@ app.post('/api/activity-permissions/:id/satpam-review', authMiddleware, requireR
       notes,
     });
     if (!perm) return res.status(404).json({ error: 'Perizinan tidak ditemukan.' });
+    emitSyncUpdate('permissions', 'updated', id, req.deviceId);
+    try { await db.saveAsync(); } catch (_) {}
     return res.json({ permission: perm });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/activity-permissions/:id/principal-decision', authMiddleware, requireRole(['kepala_sekolah', 'admin']), (req: AuthenticatedRequest, res) => {
+app.post('/api/activity-permissions/:id/principal-decision', authMiddleware, requireRole(['kepala_sekolah', 'admin']), async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const { approved, isRevision, revisionNote, rejectionReason } = req.body;
@@ -3383,18 +3789,34 @@ app.post('/api/activity-permissions/:id/principal-decision', authMiddleware, req
       rejectionReason,
     });
     if (!perm) return res.status(404).json({ error: 'Perizinan tidak ditemukan.' });
+    emitSyncUpdate('permissions', 'updated', id, req.deviceId);
+    try { await db.saveAsync(); } catch (_) {}
     return res.json({ permission: perm });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-app.patch('/api/activity-permissions/:id', authMiddleware, (req: AuthenticatedRequest, res) => {
+app.patch('/api/activity-permissions/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const perm = db.updateActivityPermission(id, req.body);
     if (!perm) return res.status(404).json({ error: 'Perizinan tidak ditemukan.' });
+    emitSyncUpdate('permissions', 'updated', id, req.deviceId);
+    try { await db.saveAsync(); } catch (_) {}
     return res.json({ permission: perm });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/activity-permissions/:id', authMiddleware, requireRole(['admin', 'kepala_sekolah']), async (req: AuthenticatedRequest, res) => {
+  try {
+    const ok = db.deleteActivityPermission(req.params.id);
+    if (!ok) return res.status(404).json({ error: 'Perizinan tidak ditemukan.' });
+    emitSyncUpdate('permissions', 'deleted', req.params.id, req.deviceId);
+    try { await db.saveAsync(); } catch (_) {}
+    return res.json({ message: 'Permohonan izin berhasil dihapus permanen.' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -3404,8 +3826,9 @@ app.patch('/api/activity-permissions/:id', authMiddleware, (req: AuthenticatedRe
 // LAPORAN APLIKASI TAMVESTA
 // =============================================================
 
-app.get('/api/app-reports', authMiddleware, (req: AuthenticatedRequest, res) => {
+app.get('/api/app-reports', authMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
+    try { await db.reloadFromGitHub(); } catch (_) {}
     const role = req.user!.role;
     let targetHandler: 'administrasi' | 'support' | undefined;
     let reporterId: string | undefined;
@@ -3425,7 +3848,7 @@ app.get('/api/app-reports', authMiddleware, (req: AuthenticatedRequest, res) => 
   }
 });
 
-app.post('/api/app-reports', authMiddleware, (req: AuthenticatedRequest, res) => {
+app.post('/api/app-reports', authMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     const { reportType, title, description, screenshotUrl, incidentTime, additionalNotes, targetHandler } = req.body;
     if (!title || !description) {
@@ -3446,13 +3869,15 @@ app.post('/api/app-reports', authMiddleware, (req: AuthenticatedRequest, res) =>
       targetHandler: targetHandler || (reportType === 'error_bug' || reportType === 'tidak_bisa_login' ? 'support' : 'administrasi'),
     });
 
+    emitSyncUpdate('app_reports', 'created', report.id, req.deviceId);
+    try { await db.saveAsync(); } catch (_) {}
     return res.json({ report });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/app-reports/:id/admin-response', authMiddleware, requireRole(['tata_usaha', 'admin']), (req: AuthenticatedRequest, res) => {
+app.post('/api/app-reports/:id/admin-response', authMiddleware, requireRole(['tata_usaha', 'admin']), async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const { message, newStatus } = req.body;
@@ -3463,13 +3888,15 @@ app.post('/api/app-reports/:id/admin-response', authMiddleware, requireRole(['ta
       newStatus,
     });
     if (!rep) return res.status(404).json({ error: 'Laporan tidak ditemukan.' });
+    emitSyncUpdate('app_reports', 'updated', id, req.deviceId);
+    try { await db.saveAsync(); } catch (_) {}
     return res.json({ report: rep });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/app-reports/:id/support-response', authMiddleware, requireRole(['support', 'admin']), (req: AuthenticatedRequest, res) => {
+app.post('/api/app-reports/:id/support-response', authMiddleware, requireRole(['support', 'admin']), async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const { technicalNotes, newStatus } = req.body;
@@ -3480,18 +3907,34 @@ app.post('/api/app-reports/:id/support-response', authMiddleware, requireRole(['
       newStatus,
     });
     if (!rep) return res.status(404).json({ error: 'Laporan tidak ditemukan.' });
+    emitSyncUpdate('app_reports', 'updated', id, req.deviceId);
+    try { await db.saveAsync(); } catch (_) {}
     return res.json({ report: rep });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
 });
 
-app.patch('/api/app-reports/:id', authMiddleware, (req: AuthenticatedRequest, res) => {
+app.patch('/api/app-reports/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const rep = db.updateAppReport(id, req.body);
     if (!rep) return res.status(404).json({ error: 'Laporan tidak ditemukan.' });
+    emitSyncUpdate('app_reports', 'updated', id, req.deviceId);
+    try { await db.saveAsync(); } catch (_) {}
     return res.json({ report: rep });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/app-reports/:id', authMiddleware, requireRole(['admin', 'support']), async (req: AuthenticatedRequest, res) => {
+  try {
+    const ok = db.deleteAppReport(req.params.id);
+    if (!ok) return res.status(404).json({ error: 'Laporan tidak ditemukan.' });
+    emitSyncUpdate('app_reports', 'deleted', req.params.id, req.deviceId);
+    try { await db.saveAsync(); } catch (_) {}
+    return res.json({ message: 'Laporan aplikasi berhasil dihapus permanen.' });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }

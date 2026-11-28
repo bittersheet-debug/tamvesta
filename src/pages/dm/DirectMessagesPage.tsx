@@ -26,6 +26,8 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.tsx';
+import { useToast } from '../../context/ToastContext.tsx';
+import { ConfirmDeleteModal } from '../../components/ConfirmDeleteModal.tsx';
 import { api } from '../../lib/api.ts';
 import type { DirectMessage, DMConversation, StudentNote, User } from '../../types/index.ts';
 import { VerifiedBadge } from '../../components/VerifiedBadge.tsx';
@@ -87,6 +89,9 @@ export const DirectMessagesPage: React.FC<DirectMessagesPageProps> = ({
   const recordingTimerRef = useRef<any>(null);
 
   // Audio Playback State
+  const { showSuccess, showError } = useToast();
+  const [dmConfirmAction, setDmConfirmAction] = useState<{ kind: 'message'; id: string } | { kind: 'note' } | null>(null);
+  const [dmDeleting, setDmDeleting] = useState(false);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -115,8 +120,18 @@ export const DirectMessagesPage: React.FC<DirectMessagesPageProps> = ({
 
   useEffect(() => {
     loadConversationsAndNotes();
-    const interval = setInterval(loadConversationsAndNotes, 10000);
-    return () => clearInterval(interval);
+    const interval = setInterval(loadConversationsAndNotes, 15000);
+    const onSync = (e: any) => {
+      const entity = e?.detail?.entity;
+      if (!entity || entity === 'dm' || entity === 'notes' || entity === 'users' || entity === 'system') {
+        loadConversationsAndNotes();
+      }
+    };
+    window.addEventListener('tamvesta_realtime_sync', onSync);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('tamvesta_realtime_sync', onSync);
+    };
   }, []);
 
   // Load messages when an active conversation is selected
@@ -136,10 +151,9 @@ export const DirectMessagesPage: React.FC<DirectMessagesPageProps> = ({
   useEffect(() => {
     if (activePartnerId) {
       loadMessages(activePartnerId);
-      const interval = setInterval(() => {
+      const syncChat = () => {
         api.getDirectMessages(activePartnerId).then((serverMsgs) => {
           setMessages((prev) => {
-            // Keep pending optimistic messages that are still sending
             const pending = prev.filter((m) => m._status === 'sending');
             const merged = [...serverMsgs];
             for (const p of pending) {
@@ -150,8 +164,17 @@ export const DirectMessagesPage: React.FC<DirectMessagesPageProps> = ({
             return merged;
           });
         }).catch(() => {});
-      }, 4000);
-      return () => clearInterval(interval);
+      };
+      const interval = setInterval(syncChat, 5000);
+      const onSync = (e: any) => {
+        const entity = e?.detail?.entity;
+        if (!entity || entity === 'dm' || entity === 'system') syncChat();
+      };
+      window.addEventListener('tamvesta_realtime_sync', onSync);
+      return () => {
+        clearInterval(interval);
+        window.removeEventListener('tamvesta_realtime_sync', onSync);
+      };
     }
   }, [activePartnerId]);
 
@@ -299,7 +322,7 @@ export const DirectMessagesPage: React.FC<DirectMessagesPageProps> = ({
         setRecordingSeconds((prev) => prev + 1);
       }, 1000);
     } catch (err) {
-      alert('Izin mikrofon diperlukan untuk merekam Voice Note.');
+      showError('Izin Mikrofon', 'Izin mikrofon diperlukan untuk merekam Voice Note.');
     }
   };
 
@@ -431,13 +454,8 @@ export const DirectMessagesPage: React.FC<DirectMessagesPageProps> = ({
   };
 
   // Delete message
-  const handleDeleteMessage = async (messageId: string) => {
-    if (!confirm('Hapus pesan ini?')) return;
-    try {
-      await api.deleteDirectMessage(messageId);
-      setMessages((prev) => prev.filter((m) => m.id !== messageId));
-      setActiveActionMessageId(null);
-    } catch (_) {}
+  const handleDeleteMessage = (messageId: string) => {
+    setDmConfirmAction({ kind: 'message', id: messageId });
   };
 
   // Media Picker
@@ -448,7 +466,7 @@ export const DirectMessagesPage: React.FC<DirectMessagesPageProps> = ({
     const isVideo = file.type.startsWith('video/');
     const isImage = file.type.startsWith('image/');
     if (!isVideo && !isImage) {
-      alert('Hanya mendukung format gambar atau video.');
+      showError('Format Tidak Didukung', 'Hanya mendukung format gambar atau video.');
       return;
     }
 
@@ -475,19 +493,38 @@ export const DirectMessagesPage: React.FC<DirectMessagesPageProps> = ({
       setActiveNotes((prev) => [note, ...prev.filter((n) => n.userId !== user?.id)]);
       setNoteTextInput('');
       setIsCreateNoteModalOpen(false);
+      showSuccess('Catatan Disimpan', 'Catatan status 24 jam berhasil diterbitkan.');
     } catch (err: any) {
-      alert(err.message || 'Gagal menyimpan catatan.');
+      showError('Gagal Menyimpan Catatan', err.message || 'Gagal menyimpan catatan.');
     } finally {
       setIsSubmittingNote(false);
     }
   };
 
-  const handleDeleteMyNote = async () => {
-    if (!confirm('Hapus catatan Anda?')) return;
+  const handleDeleteMyNote = () => {
+    setDmConfirmAction({ kind: 'note' });
+  };
+
+  const confirmDmDeleteAction = async () => {
+    if (!dmConfirmAction) return;
+    setDmDeleting(true);
     try {
-      await api.deleteNote();
-      setActiveNotes((prev) => prev.filter((n) => n.userId !== user?.id));
-    } catch (_) {}
+      if (dmConfirmAction.kind === 'message') {
+        await api.deleteDirectMessage(dmConfirmAction.id);
+        setMessages((prev) => prev.filter((m) => m.id !== dmConfirmAction.id));
+        setActiveActionMessageId(null);
+        showSuccess('Pesan Dihapus', 'Pesan berhasil dihapus permanen.');
+      } else {
+        await api.deleteNote();
+        setActiveNotes((prev) => prev.filter((n) => n.userId !== user?.id));
+        showSuccess('Catatan Dihapus', 'Catatan Anda telah dihapus permanen.');
+      }
+      setDmConfirmAction(null);
+    } catch (err: any) {
+      showError('Gagal Menghapus', err?.message || 'Gagal menghapus item.');
+    } finally {
+      setDmDeleting(false);
+    }
   };
 
   // Calculate remaining hours for a note
@@ -1538,6 +1575,15 @@ export const DirectMessagesPage: React.FC<DirectMessagesPageProps> = ({
           />
         </div>
       )}
+
+      <ConfirmDeleteModal
+        isOpen={Boolean(dmConfirmAction)}
+        title={dmConfirmAction?.kind === 'message' ? 'Hapus Pesan Permanen' : 'Hapus Catatan Anda'}
+        message="Apakah Anda yakin ingin menghapus data ini secara permanen?"
+        loading={dmDeleting}
+        onCancel={() => setDmConfirmAction(null)}
+        onConfirm={confirmDmDeleteAction}
+      />
     </div>
   );
 };

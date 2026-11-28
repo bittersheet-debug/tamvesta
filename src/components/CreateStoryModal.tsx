@@ -2,6 +2,7 @@ import { compressImage } from '../lib/imageCompressor.ts';
 import React, { useState } from 'react';
 import { X, Image, Video, Sparkles, Send, Camera } from 'lucide-react';
 import { api } from '../lib/api.ts';
+import { useToast } from '../context/ToastContext.tsx';
 import type { Story } from '../types/index.ts';
 
 interface CreateStoryModalProps {
@@ -15,6 +16,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
   onClose,
   onStoryCreated,
 }) => {
+  const { showSuccess, showError } = useToast();
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [mediaType, setMediaType] = useState<'photo' | 'video'>('photo');
   const [caption, setCaption] = useState('');
@@ -27,7 +29,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
     if (!file) return;
 
     if (file.size > 25 * 1024 * 1024) {
-      alert('Ukuran file media maksimal 25 MB.');
+      showError('File Terlalu Besar', 'Ukuran file media maksimal 25 MB.');
       return;
     }
 
@@ -52,7 +54,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!mediaUrl) {
-      alert('Silakan pilih foto atau video terlebih dahulu.');
+      showError('Media Wajib', 'Silakan pilih foto atau video terlebih dahulu.');
       return;
     }
 
@@ -64,9 +66,10 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
         caption: caption.trim() || undefined,
       });
       onStoryCreated(created);
+      showSuccess('Story Dibagikan', 'Cerita 24 jam berhasil diterbitkan.');
       onClose();
     } catch (err: any) {
-      alert(err.message || 'Gagal membagikan Story.');
+      showError('Gagal Bagikan Story', err.message || 'Gagal membagikan Story.');
     } finally {
       setLoading(false);
     }

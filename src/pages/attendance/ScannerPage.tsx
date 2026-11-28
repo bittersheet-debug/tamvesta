@@ -26,6 +26,7 @@ import confetti from 'canvas-confetti';
 import { api } from '../../lib/api.ts';
 import type { AttendanceEvent, AttendanceRecord, ScanResultPayload } from '../../types/index.ts';
 import { useAuth } from '../../context/AuthContext.tsx';
+import { useToast } from '../../context/ToastContext.tsx';
 
 // Simple synthesized beep sound using Web Audio API
 function playScanSound(isSuccess: boolean) {
@@ -61,6 +62,7 @@ function playScanSound(isSuccess: boolean) {
 export const ScannerPage: React.FC<{ onBackToDashboard?: () => void }> = ({ onBackToDashboard }) => {
   const { user } = useAuth();
   const [events, setEvents] = useState<(AttendanceEvent & { totalAttendees?: number })[]>([]);
+  const { showSuccess, showError } = useToast();
   const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(true);
@@ -106,7 +108,16 @@ export const ScannerPage: React.FC<{ onBackToDashboard?: () => void }> = ({ onBa
 
   useEffect(() => {
     loadEvents();
-  }, []);
+    const onSync = (e: any) => {
+      const entity = e?.detail?.entity;
+      if (!entity || entity === 'events' || entity === 'attendance' || entity === 'system') {
+        loadEvents();
+        if (selectedEventId) loadRecords(selectedEventId);
+      }
+    };
+    window.addEventListener('tamvesta_realtime_sync', onSync);
+    return () => window.removeEventListener('tamvesta_realtime_sync', onSync);
+  }, [selectedEventId]);
 
   useEffect(() => {
     if (selectedEventId) {
@@ -124,8 +135,9 @@ export const ScannerPage: React.FC<{ onBackToDashboard?: () => void }> = ({ onBa
       setEvents((prev) =>
         prev.map((e) => (e.id === selectedEventId ? { ...e, isOpen: res.isOpen } : e))
       );
+      showSuccess('Status Sesi Diperbarui', `Sesi absensi kini ${res.isOpen ? 'Dibuka' : 'Ditutup'}.`);
     } catch (err: any) {
-      alert(err.message || 'Gagal mengubah status sesi.');
+      showError('Gagal Mengubah Sesi', err.message || 'Gagal mengubah status sesi.');
     }
   };
 

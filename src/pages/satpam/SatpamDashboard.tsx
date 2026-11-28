@@ -17,6 +17,7 @@ import {
   Search,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.tsx';
+import { useToast } from '../../context/ToastContext.tsx';
 import { api } from '../../lib/api.ts';
 import { LostFoundManagementPanel } from '../../components/LostFoundManagementPanel.tsx';
 import type {
@@ -27,6 +28,7 @@ import type {
 
 export const SatpamDashboard: React.FC = () => {
   const { user } = useAuth();
+  const { showSuccess, showError } = useToast();
   const [activeTab, setActiveTab] = useState<'lost_found' | 'facility_checks'>('lost_found');
 
   // Lost and Found
@@ -69,8 +71,18 @@ export const SatpamDashboard: React.FC = () => {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 12000);
-    return () => clearInterval(interval);
+    const interval = setInterval(loadData, 15000);
+    const onSync = (e: any) => {
+      const entity = e?.detail?.entity;
+      if (!entity || entity === 'lost_found' || entity === 'permissions' || entity === 'system') {
+        loadData();
+      }
+    };
+    window.addEventListener('tamvesta_realtime_sync', onSync);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('tamvesta_realtime_sync', onSync);
+    };
   }, []);
 
   // Update Item Status
@@ -78,8 +90,9 @@ export const SatpamDashboard: React.FC = () => {
     try {
       const updated = await api.updateLostFoundItem(itemId, { status: newStatus });
       setItems((prev) => prev.map((i) => (i.id === itemId ? updated : i)));
+      showSuccess('Status Diperbarui', 'Status laporan barang berhasil diperbarui.');
     } catch (err: any) {
-      alert(err.message || 'Gagal memperbarui status');
+      showError('Gagal Memperbarui', err.message || 'Gagal memperbarui status');
     }
   };
 
@@ -99,9 +112,9 @@ export const SatpamDashboard: React.FC = () => {
       setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
       setReviewingClaim(null);
       setSatpamNoteInput('');
-      alert(`Klaim barang berhasil diperbarui: ${status.replace(/_/g, ' ')}`);
+      showSuccess('Klaim Diproses', `Klaim barang berhasil diperbarui: ${status.replace(/_/g, ' ')}`);
     } catch (err: any) {
-      alert(err.message || 'Gagal memproses klaim');
+      showError('Gagal Memproses Klaim', err.message || 'Gagal memproses klaim');
     } finally {
       setIsProcessingClaim(false);
     }
@@ -120,9 +133,9 @@ export const SatpamDashboard: React.FC = () => {
       setPermissions((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
       setReviewingPerm(null);
       setPermNotes('');
-      alert('Pemeriksaan Satpam selesai dan diteruskan ke Kepala Sekolah!');
+      showSuccess('Pemeriksaan Selesai', 'Pemeriksaan Satpam selesai dan diteruskan ke Kepala Sekolah!');
     } catch (err: any) {
-      alert(err.message || 'Gagal memproses pemeriksaan izin');
+      showError('Gagal Memproses Izin', err.message || 'Gagal memproses pemeriksaan izin');
     } finally {
       setIsProcessingPerm(false);
     }

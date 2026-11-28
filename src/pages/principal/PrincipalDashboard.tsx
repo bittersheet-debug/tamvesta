@@ -34,6 +34,8 @@ import {
   Bell,
 } from 'lucide-react';
 import { NotificationBroadcastPanel } from '../../components/NotificationBroadcastPanel.tsx';
+import { ConfirmDeleteModal } from '../../components/ConfirmDeleteModal.tsx';
+import { useToast } from '../../context/ToastContext.tsx';
 import { api } from '../../lib/api.ts';
 import type {
   User,
@@ -46,7 +48,10 @@ import { useAuth } from '../../context/AuthContext.tsx';
 
 export const PrincipalDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpenScanner }) => {
   const { user } = useAuth();
+  const { showSuccess, showError } = useToast();
   const [activeTab, setActiveTab] = useState<'overview' | 'teachers' | 'articles' | 'finance' | 'tu_reports' | 'permissions' | 'notifications'>('overview');
+  const [resettingTeacher, setResettingTeacher] = useState<User | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
   const [tuReports, setTuReports] = useState<any[]>([]);
   const [permissions, setPermissions] = useState<any[]>([]);
   const [reviewingPermId, setReviewingPermId] = useState<string | null>(null);
@@ -104,6 +109,11 @@ export const PrincipalDashboard: React.FC<{ onOpenScanner: () => void }> = ({ on
 
   useEffect(() => {
     loadAllData();
+    const onSync = () => {
+      loadAllData();
+    };
+    window.addEventListener('tamvesta_realtime_sync', onSync);
+    return () => window.removeEventListener('tamvesta_realtime_sync', onSync);
   }, []);
 
   const copyToClipboard = (text: string, key: string) => {
@@ -113,6 +123,8 @@ export const PrincipalDashboard: React.FC<{ onOpenScanner: () => void }> = ({ on
   };
 
   const handleToggleVerified = async (teacher: User) => {
+    // Guru: centang biru permanen, tidak bisa dinonaktifkan
+    if (teacher.role === 'guru') return;
     try {
       const res = await api.toggleVerified(teacher.id);
       setTeachers((prev) =>
@@ -126,16 +138,28 @@ export const PrincipalDashboard: React.FC<{ onOpenScanner: () => void }> = ({ on
     }
   };
 
-  const handleResetPassword = async (teacher: User) => {
-    if (!confirm(`Reset kata sandi ${teacher.name} ke password awal resmi sistem?`)) return;
+  const handleResetPassword = (teacher: User) => {
+    setResettingTeacher(teacher);
+  };
+
+  const confirmResetPassword = async () => {
+    if (!resettingTeacher) return;
+    setResetLoading(true);
     try {
-      const res = await api.resetStaffToInitialPassword(teacher.id);
-      setActionSuccess(res.message || `Password ${teacher.name} berhasil direset ke password awal.`);
+      const res = await api.resetStaffToInitialPassword(resettingTeacher.id);
+      const msg = res.message || `Password ${resettingTeacher.name} berhasil direset ke password awal.`;
+      setActionSuccess(msg);
+      showSuccess('Kata Sandi Direset', msg);
+      setResettingTeacher(null);
       await loadAllData();
       setTimeout(() => setActionSuccess(null), 4000);
     } catch (err: any) {
-      setActionError(err.message || 'Gagal mereset kata sandi.');
+      const msg = err.message || 'Gagal mereset kata sandi.';
+      setActionError(msg);
+      showError('Gagal Reset Sandi', msg);
       setTimeout(() => setActionError(null), 4000);
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -559,18 +583,29 @@ export const PrincipalDashboard: React.FC<{ onOpenScanner: () => void }> = ({ on
                             </div>
                           </td>
                           <td className="p-3.5 text-center">
-                            <button
-                              onClick={() => handleToggleVerified(tch)}
-                              className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold border transition inline-flex items-center gap-1 ${
-                                tch.isVerified
-                                  ? 'bg-blue-50 text-blue-800 border-blue-300 hover:bg-blue-100'
-                                  : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
-                              }`}
-                              title="Klik untuk mengubah centang biru resmi"
-                            >
-                              <ShieldCheck className={`w-3.5 h-3.5 ${tch.isVerified ? 'text-blue-600' : 'text-slate-400'}`} />
-                              <span>{tch.isVerified ? 'VERIFIED' : 'BELUM'}</span>
-                            </button>
+                            {tch.role === 'guru' ? (
+                              // Guru: centang PERMANEN — tidak bisa dinonaktifkan
+                              <span
+                                className="px-2.5 py-1 rounded-full text-[10px] font-extrabold border inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 border-emerald-300 cursor-default"
+                                title="Guru Terverifikasi Permanen"
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600" />
+                                <span>PERMANEN</span>
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handleToggleVerified(tch)}
+                                className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold border transition inline-flex items-center gap-1 ${
+                                  tch.isVerified
+                                    ? 'bg-blue-50 text-blue-800 border-blue-300 hover:bg-blue-100'
+                                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                                }`}
+                                title="Klik untuk mengubah centang biru resmi"
+                              >
+                                <ShieldCheck className={`w-3.5 h-3.5 ${tch.isVerified ? 'text-blue-600' : 'text-slate-400'}`} />
+                                <span>{tch.isVerified ? 'VERIFIED' : 'BELUM'}</span>
+                              </button>
+                            )}
                           </td>
                           <td className="p-3.5 text-center">
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -1144,6 +1179,18 @@ export const PrincipalDashboard: React.FC<{ onOpenScanner: () => void }> = ({ on
           </div>
         </div>
       )}
+
+      <ConfirmDeleteModal
+        isOpen={Boolean(resettingTeacher)}
+        title="Reset Kata Sandi Guru"
+        message={`Apakah Anda yakin ingin mereset kata sandi ${resettingTeacher?.name || ''} ke password awal resmi sistem?`}
+        itemName={resettingTeacher?.name}
+        confirmLabel="Reset Password"
+        cancelLabel="Batal"
+        loading={resetLoading}
+        onCancel={() => setResettingTeacher(null)}
+        onConfirm={confirmResetPassword}
+      />
     </div>
   );
 };

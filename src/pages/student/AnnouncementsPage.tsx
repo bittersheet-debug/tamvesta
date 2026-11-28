@@ -16,6 +16,14 @@ export const AnnouncementsPage: React.FC<AnnouncementsPageProps> = ({ onBack }) 
 
   useEffect(() => {
     loadAnnouncements();
+    const onSync = (e: any) => {
+      const entity = e?.detail?.entity;
+      if (!entity || entity === 'announcements' || entity === 'notifications' || entity === 'system') {
+        loadAnnouncements();
+      }
+    };
+    window.addEventListener('tamvesta_realtime_sync', onSync);
+    return () => window.removeEventListener('tamvesta_realtime_sync', onSync);
   }, []);
 
   const loadAnnouncements = async () => {

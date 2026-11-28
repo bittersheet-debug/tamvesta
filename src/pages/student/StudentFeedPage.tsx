@@ -42,6 +42,8 @@ import {
   FileText,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.tsx';
+import { useToast } from '../../context/ToastContext.tsx';
+import { ConfirmDeleteModal } from '../../components/ConfirmDeleteModal.tsx';
 import { api } from '../../lib/api.ts';
 import type { StudentPost, PostComment, Story } from '../../types/index.ts';
 import { CreatePostModal } from '../../components/CreatePostModal.tsx';
@@ -80,6 +82,10 @@ export const StudentFeedPage: React.FC<StudentFeedPageProps> = ({
   onOpenReports,
 }) => {
   const { user, refreshUser, logout } = useAuth();
+  const { showSuccess, showError } = useToast();
+  const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
+  const [deletingPostLoading, setDeletingPostLoading] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const isSupportUser =
     user?.role === 'support' ||
     user?.isDeveloper ||
@@ -138,14 +144,8 @@ export const StudentFeedPage: React.FC<StudentFeedPageProps> = ({
         api.getNotifications().catch(() => []),
         api.getDMConversations().catch(() => []),
       ]);
-      setPosts((prev) => {
-        if (fetchedPosts.length === 0 && prev.length > 0) return prev;
-        return fetchedPosts;
-      });
-      setStories((prev) => {
-        if (fetchedStories.length === 0 && prev.length > 0) return prev;
-        return fetchedStories;
-      });
+      setPosts(fetchedPosts || []);
+      setStories(fetchedStories || []);
       setUnreadNotifCount(notifs.filter((n: { isRead: boolean }) => !n.isRead).length);
       if (Array.isArray(convs)) {
         const totalUnread = convs.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
@@ -162,34 +162,39 @@ export const StudentFeedPage: React.FC<StudentFeedPageProps> = ({
   useEffect(() => {
     loadFeedData();
 
-    // Auto-refresh feed dan story setiap 8 detik agar postingan dari akun lain langsung muncul otomatis
+    // Auto-refresh feed dan story periodik
     const interval = setInterval(() => {
       loadFeedData(true);
-    }, 8000);
+    }, 15000);
 
     const onFocus = () => loadFeedData(true);
+    const onRealtimeSync = (e: any) => {
+      const entity = e?.detail?.entity;
+      if (!entity || ['posts', 'stories', 'notifications', 'dm', 'users', 'system'].includes(entity)) {
+        if (entity === 'users' || entity === 'system') refreshUser();
+        loadFeedData(true);
+      }
+    };
     window.addEventListener('focus', onFocus);
+    window.addEventListener('tamvesta_realtime_sync', onRealtimeSync);
 
-    // Sinyal langsung dari Admin Dashboard (Centang Biru & Perubahan Data)
+    let channel: BroadcastChannel | null = null;
     try {
-      const channel = new BroadcastChannel('tamvesta_admin_sync');
+      channel = new BroadcastChannel('tamvesta_admin_sync');
       channel.onmessage = (event) => {
         if (event.data?.type === 'REFRESH_ALL' || event.data?.userId === user?.id) {
           refreshUser();
           loadFeedData(true);
         }
       };
-      return () => {
-        clearInterval(interval);
-        window.removeEventListener('focus', onFocus);
-        try { channel.close(); } catch (_) {}
-      };
-    } catch (_) {
-      return () => {
-        clearInterval(interval);
-        window.removeEventListener('focus', onFocus);
-      };
-    }
+    } catch (_) {}
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('tamvesta_realtime_sync', onRealtimeSync);
+      try { channel?.close(); } catch (_) {}
+    };
   }, [user?.id]);
 
   // 1. Refresh Terhubung ke Admin Dashboard via Backend
@@ -242,12 +247,7 @@ export const StudentFeedPage: React.FC<StudentFeedPageProps> = ({
 
   // 2. Konfirmasi Keluar Akun Siswa (Tanpa menghapus data)
   const handleConfirmLogout = () => {
-    const isConfirmed = window.confirm(
-      'Apakah Anda yakin ingin keluar dari akun TAMVESTA? Data akun Anda tetap aman tersimpan.'
-    );
-    if (isConfirmed) {
-      logout();
-    }
+    setShowLogoutConfirm(true);
   };
 
   // 3. Sematkan ke Profil / Lepas Sematan (Pinned Post)
@@ -260,7 +260,7 @@ export const StudentFeedPage: React.FC<StudentFeedPageProps> = ({
       );
       await loadFeedData(true);
     } catch (err: any) {
-      alert(err.message || 'Gagal mengubah status sematan postingan.');
+      showError('Gagal Semat Postingan', err.message || 'Gagal mengubah status sematan postingan.');
     }
   };
 
@@ -268,18 +268,18 @@ export const StudentFeedPage: React.FC<StudentFeedPageProps> = ({
   const handleExecuteAvatarModeration = async () => {
     if (!moderatingUser) return;
     if (!moderationReason.trim()) {
-      alert('Mohon masukkan alasan moderasi foto profil.');
+      showError('Validasi Gagal', 'Mohon masukkan alasan moderasi foto profil.');
       return;
     }
     setIsModerating(true);
     try {
       await api.resetStudentAvatar(moderatingUser.id, moderationReason.trim());
-      alert(`Foto profil ${moderatingUser.name} berhasil di-reset ke default TAMVESTA.`);
+      showSuccess('Foto Direset', `Foto profil ${moderatingUser.name} berhasil di-reset ke default TAMVESTA.`);
       setModeratingUser(null);
       setModerationReason('');
       await loadFeedData(true);
     } catch (err: any) {
-      alert(err.message || 'Gagal melakukan moderasi foto profil.');
+      showError('Gagal Moderasi Foto', err.message || 'Gagal melakukan moderasi foto profil.');
     } finally {
       setIsModerating(false);
     }
@@ -363,19 +363,28 @@ export const StudentFeedPage: React.FC<StudentFeedPageProps> = ({
         window.dispatchEvent(new CustomEvent('tamvesta_refresh_notifications'));
       } catch (_) {}
     } catch (err: any) {
-      alert(err.message || 'Gagal mengirimkan komentar.');
+      showError('Gagal Komentar', err.message || 'Gagal mengirimkan komentar.');
     } finally {
       setSubmittingComment((prev) => ({ ...prev, [postId]: false }));
     }
   };
 
-  const handleDeletePost = async (postId: string) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus postingan ini?')) return;
+  const handleDeletePost = (postId: string) => {
+    setDeletingPostId(postId);
+  };
+
+  const confirmDeletePost = async () => {
+    if (!deletingPostId) return;
+    setDeletingPostLoading(true);
     try {
-      await api.deletePost(postId);
-      setPosts((prev) => prev.filter((p) => p.id !== postId));
+      await api.deletePost(deletingPostId);
+      setPosts((prev) => prev.filter((p) => p.id !== deletingPostId));
+      showSuccess('Postingan Dihapus', 'Postingan berhasil dihapus secara permanen.');
+      setDeletingPostId(null);
     } catch (err: any) {
-      alert(err.message || 'Gagal menghapus postingan.');
+      showError('Gagal Menghapus', err.message || 'Gagal menghapus postingan.');
+    } finally {
+      setDeletingPostLoading(false);
     }
   };
 
@@ -390,8 +399,9 @@ export const StudentFeedPage: React.FC<StudentFeedPageProps> = ({
       const updated = await api.updatePost(postId, editingCaption);
       setPosts((prev) => prev.map((p) => (p.id === postId ? updated : p)));
       setEditingPostId(null);
+      showSuccess('Postingan Diperbarui', 'Caption berhasil disimpan.');
     } catch (err: any) {
-      alert(err.message || 'Gagal mengubah postingan.');
+      showError('Gagal Mengubah', err.message || 'Gagal mengubah postingan.');
     }
   };
 
@@ -399,8 +409,9 @@ export const StudentFeedPage: React.FC<StudentFeedPageProps> = ({
     try {
       await api.deleteStory(storyId);
       setStories((prev) => prev.filter((s) => s.id !== storyId));
+      showSuccess('Story Dihapus', 'Story berhasil dihapus permanen.');
     } catch (err: any) {
-      alert(err.message || 'Gagal menghapus Story.');
+      showError('Gagal Menghapus Story', err.message || 'Gagal menghapus Story.');
     }
   };
 
@@ -1899,6 +1910,28 @@ export const StudentFeedPage: React.FC<StudentFeedPageProps> = ({
       <StudentScheduleModal
         isOpen={isScheduleModalOpen}
         onClose={() => setIsScheduleModalOpen(false)}
+      />
+
+      <ConfirmDeleteModal
+        isOpen={Boolean(deletingPostId)}
+        title="Hapus Postingan Permanen"
+        message="Apakah Anda yakin ingin menghapus data ini secara permanen?"
+        loading={deletingPostLoading}
+        onCancel={() => setDeletingPostId(null)}
+        onConfirm={confirmDeletePost}
+      />
+
+      <ConfirmDeleteModal
+        isOpen={showLogoutConfirm}
+        title="Keluar dari Akun"
+        message="Apakah Anda yakin ingin keluar dari akun TAMVESTA? Data akun Anda tetap aman tersimpan."
+        confirmLabel="Keluar Sekarang"
+        cancelLabel="Batal"
+        onCancel={() => setShowLogoutConfirm(false)}
+        onConfirm={() => {
+          setShowLogoutConfirm(false);
+          logout();
+        }}
       />
     </div>
   );

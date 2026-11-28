@@ -17,6 +17,14 @@ export const SubjectsPage: React.FC<SubjectsPageProps> = ({ onBack }) => {
 
   useEffect(() => {
     loadSubjects();
+    const onSync = (e: any) => {
+      const entity = e?.detail?.entity;
+      if (!entity || entity === 'subjects' || entity === 'system') {
+        loadSubjects();
+      }
+    };
+    window.addEventListener('tamvesta_realtime_sync', onSync);
+    return () => window.removeEventListener('tamvesta_realtime_sync', onSync);
   }, []);
 
   const loadSubjects = async () => {

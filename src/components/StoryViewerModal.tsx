@@ -3,6 +3,7 @@ import { X, Trash2, ChevronLeft, ChevronRight, Clock, Send, MessageCircle, Heart
 import type { Story } from '../types/index.ts';
 import { api } from '../lib/api.ts';
 import { VerifiedBadge } from './VerifiedBadge.tsx';
+import { ConfirmDeleteModal } from './ConfirmDeleteModal.tsx';
 
 interface StoryViewerModalProps {
   isOpen: boolean;
@@ -26,6 +27,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   const [replyText, setReplyText] = useState('');
   const [isReplying, setIsReplying] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [confirmDeleteStory, setConfirmDeleteStory] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -157,12 +159,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
               {isOwnStory && onDeleteStory && (
                 <button
                   type="button"
-                  onClick={() => {
-                    if (confirm('Hapus Story ini?')) {
-                      onDeleteStory(currentStory.id);
-                      handleNext();
-                    }
-                  }}
+                  onClick={() => setConfirmDeleteStory(true)}
                   className="p-2 rounded-full hover:bg-white/20 text-rose-400 transition"
                   title="Hapus Story Saya"
                 >
@@ -330,6 +327,20 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
           </div>
         )}
       </div>
+
+      <ConfirmDeleteModal
+        isOpen={confirmDeleteStory}
+        title="Hapus Story Permanen"
+        message="Apakah Anda yakin ingin menghapus data ini secara permanen?"
+        onCancel={() => setConfirmDeleteStory(false)}
+        onConfirm={() => {
+          setConfirmDeleteStory(false);
+          if (onDeleteStory) {
+            onDeleteStory(currentStory.id);
+            handleNext();
+          }
+        }}
+      />
     </div>
   );
 };

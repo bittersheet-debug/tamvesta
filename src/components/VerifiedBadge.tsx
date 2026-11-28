@@ -18,7 +18,8 @@ export const VerifiedBadge: React.FC<VerifiedBadgeProps> = ({
   isDeveloper = false,
 }) => {
   const isDev = isDeveloper || type === 'yellow' || type === 'developer' || type === 'gold';
-  const isTeacher = role === 'guru' || type === 'green';
+  // Guru: centang BIRU permanen — type 'green' hanya legacy, guru tetap tampil biru
+  const isTeacherGreen = type === 'green' && role !== 'guru';
 
   let fillColor = '#2563eb'; // Default blue
   let defaultTitle = 'Akun Terverifikasi Resmi (Centang Biru)';
@@ -26,9 +27,12 @@ export const VerifiedBadge: React.FC<VerifiedBadgeProps> = ({
   if (isDev) {
     fillColor = '#eab308'; // Developer yellow
     defaultTitle = 'Developer Resmi TAMVESTA (Centang Kuning)';
-  } else if (isTeacher) {
-    fillColor = '#16a34a'; // Teacher green
-    defaultTitle = 'Guru Terverifikasi Resmi (Centang Hijau)';
+  } else if (isTeacherGreen) {
+    fillColor = '#16a34a'; // Green (legacy/non-guru)
+    defaultTitle = 'Terverifikasi Resmi (Centang Hijau)';
+  } else if (role === 'guru') {
+    fillColor = '#2563eb'; // Guru: biru permanen
+    defaultTitle = 'Guru Terverifikasi Resmi — Centang Biru Permanen';
   }
 
   const resolvedTitle = title || defaultTitle;

@@ -52,6 +52,8 @@ import { LostFoundManagementPanel } from '../../components/LostFoundManagementPa
 import { DirectMessagesPage } from '../dm/DirectMessagesPage.tsx';
 import { api } from '../../lib/api.ts';
 import { playQuizExitAlertSound, playNotificationChime } from '../../lib/audio.ts';
+import { useToast } from '../../context/ToastContext.tsx';
+import { ConfirmDeleteModal } from '../../components/ConfirmDeleteModal.tsx';
 import type {
   Quiz,
   QuizAttempt,
@@ -119,6 +121,7 @@ const isStudentInSelectedClass = (stuKelasRaw: string, selKelasRaw: string): boo
 
 export const TeacherDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOpenScanner }) => {
   const { user } = useAuth();
+  const { showSuccess, showError } = useToast();
   const [activeTab, setActiveTab] = useState<TeacherTab>('articles');
   const [loading, setLoading] = useState(true);
 
@@ -141,6 +144,9 @@ export const TeacherDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOp
   const [creatingLoading, setCreatingLoading] = useState(false);
   const [previewGoogleFormUrl, setPreviewGoogleFormUrl] = useState<string | null>(null);
   const [quizToDelete, setQuizToDelete] = useState<Quiz | null>(null);
+  const [quizDeleting, setQuizDeleting] = useState(false);
+  const [articleToDelete, setArticleToDelete] = useState<{ id: string; title: string } | null>(null);
+  const [articleDeleting, setArticleDeleting] = useState(false);
   const [quizForm, setQuizForm] = useState({
     title: '',
     subjectName: 'Matematika Peminatan',
@@ -261,17 +267,15 @@ export const TeacherDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOp
   const handleRefreshAttendanceStudents = async () => {
     setRefreshingStudents(true);
     try {
-      try {
-        await api.syncPublicUsers();
-      } catch (_) {}
       const stuList = await api.getStudents();
       if (Array.isArray(stuList)) {
         setAllStudents(stuList);
         setAttendanceSuccess(`Data siswa berhasil disegarkan! ${stuList.length} siswa termuat.`);
+        showSuccess('Data Siswa Disegarkan', `${stuList.length} siswa termuat dari database.`);
         setTimeout(() => setAttendanceSuccess(null), 3500);
       }
     } catch (err: any) {
-      console.warn('Gagal menyegarkan siswa:', err);
+      showError('Gagal Menyegarkan', err.message || 'Gagal memuat data siswa.');
     } finally {
       setRefreshingStudents(false);
     }
@@ -317,7 +321,6 @@ export const TeacherDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOp
   const loadData = async () => {
     setLoading(true);
     try {
-      await api.syncLocalQuizzesToServer().catch(() => {});
       const [qzRaw, att, sb, artList, stuList, viols, parts] = await Promise.all([
         api.getQuizzes(),
         api.getQuizAttempts(),
@@ -374,8 +377,18 @@ export const TeacherDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOp
         setActiveTab('lost_found');
       }
     };
+    const onRealtimeSync = (e: any) => {
+      const entity = e?.detail?.entity;
+      if (!entity || ['quizzes', 'articles', 'users', 'subjects', 'attendance', 'system'].includes(entity)) {
+        loadData();
+      }
+    };
     window.addEventListener('tamvesta_navigate', handleNavEvent);
-    return () => window.removeEventListener('tamvesta_navigate', handleNavEvent);
+    window.addEventListener('tamvesta_realtime_sync', onRealtimeSync);
+    return () => {
+      window.removeEventListener('tamvesta_navigate', handleNavEvent);
+      window.removeEventListener('tamvesta_realtime_sync', onRealtimeSync);
+    };
   }, []);
 
   // Real-time polling untuk kuis, peserta masuk & pelanggaran ujian saat guru di tab kuis
@@ -500,8 +513,9 @@ export const TeacherDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOp
             : q
         )
       );
+      showSuccess('Status Kuis Diperbarui', `Kuis "${quiz.title}" kini ${newStatus ? 'Aktif' : 'Nonaktif'}.`);
     } catch (err: any) {
-      alert(err.message || 'Gagal mengubah status kuis.');
+      showError('Gagal Memperbarui Kuis', err.message || 'Gagal mengubah status kuis.');
     }
   };
 
@@ -519,26 +533,26 @@ export const TeacherDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOp
   };
 
   const confirmExecuteDelete = async (id: string) => {
-    setQuizToDelete(null);
+    setQuizDeleting(true);
     try {
       await api.deleteQuiz(id);
-      // Hapus kuis dari daftar
       setQuizzes((prev) => prev.filter((q) => q.id !== id));
-      // Hapus seluruh pelanggaran kuis terkait secara instan
       setViolations((prev) => prev.filter((v) => v.quizId !== id));
-      // Hapus seluruh peserta dan attempt kuis terkait secara instan
       setParticipants((prev) => prev.filter((p) => p.quizId !== id));
       setAttempts((prev) => prev.filter((a) => a.quizId !== id));
-      // Bersihkan alert jika berasal dari kuis ini
       setLatestViolationAlert((prev) => (prev?.quizId === id ? null : prev));
       prevViolationCountRef.current = 0;
       if (selectedQuizFilter === id) {
         setSelectedQuizFilter('all');
       }
+      setQuizToDelete(null);
       setGlobalSuccess('Quiz dan seluruh data pelanggaran berhasil dihapus permanen.');
+      showSuccess('Quiz Dihapus Permanen', 'Quiz dan seluruh riwayatnya telah dihapus selamanya.');
       setTimeout(() => setGlobalSuccess(null), 3000);
     } catch (err: any) {
-      alert(err.message || 'Gagal menghapus quiz.');
+      showError('Gagal Menghapus Quiz', err.message || 'Gagal menghapus quiz.');
+    } finally {
+      setQuizDeleting(false);
     }
   };
 
@@ -569,12 +583,12 @@ export const TeacherDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOp
   const handleSaveQuiz = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!quizForm.title.trim()) {
-      alert('Judul quiz wajib diisi.');
+      showError('Validasi Gagal', 'Judul quiz wajib diisi.');
       return;
     }
 
     if (quizForm.sourceType === 'google_forms' && !quizForm.externalUrl.trim()) {
-      alert('Tautan Google Forms wajib diisi.');
+      showError('Validasi Gagal', 'Tautan Google Forms wajib diisi.');
       return;
     }
 
@@ -601,9 +615,9 @@ export const TeacherDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOp
       const created = await api.createQuiz(payload);
       setShowCreateModal(false);
       await loadData();
-      alert(`Quiz "${created.title}" berhasil diterbitkan ke Cloud!\n\nTOKEN UJIAN SISWA: ${created.token}\n\nToken ini aktif secara Real-Time dan dapat langsung dimasukkan oleh siswa di Web maupun Aplikasi Android.`);
+      showSuccess('Quiz Diterbitkan', `Quiz "${created.title}" aktif (Token: ${created.token}).`);
     } catch (err: any) {
-      alert(err.message || 'Gagal membuat quiz baru.');
+      showError('Gagal Membuat Quiz', err.message || 'Gagal membuat quiz baru.');
     } finally {
       setCreatingLoading(false);
     }
@@ -708,16 +722,26 @@ export const TeacherDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOp
     }
   };
 
-  const handleDeleteArticle = async (id: string, title: string) => {
-    if (!confirm(`Hapus artikel "${title}"?`)) return;
+  const handleDeleteArticle = (id: string, title: string) => {
+    setArticleToDelete({ id, title });
+  };
+
+  const confirmDeleteArticle = async () => {
+    if (!articleToDelete) return;
+    setArticleDeleting(true);
     try {
-      await api.deleteArticle(id);
-      setArticles((prev) => prev.filter((a) => a.id !== id));
-      setGlobalSuccess(`Artikel "${title}" telah dihapus.`);
+      await api.deleteArticle(articleToDelete.id);
+      setArticles((prev) => prev.filter((a) => a.id !== articleToDelete.id));
+      setGlobalSuccess(`Artikel "${articleToDelete.title}" telah dihapus.`);
+      showSuccess('Artikel Dihapus Permanen', `Artikel "${articleToDelete.title}" telah dihapus selamanya.`);
+      setArticleToDelete(null);
       setTimeout(() => setGlobalSuccess(null), 3000);
     } catch (err: any) {
       setGlobalError(err.message || 'Gagal menghapus artikel.');
+      showError('Gagal Menghapus Artikel', err.message || 'Gagal menghapus artikel.');
       setTimeout(() => setGlobalError(null), 3000);
+    } finally {
+      setArticleDeleting(false);
     }
   };
 
@@ -752,7 +776,7 @@ export const TeacherDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOp
 
   const handleSaveClassAttendance = async () => {
     if (classStudents.length === 0) {
-      alert('Tidak ada siswa di kelas ini.');
+      showError('Data Kosong', 'Tidak ada siswa di kelas ini.');
       return;
     }
 
@@ -774,7 +798,6 @@ export const TeacherDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOp
 
       await api.recordClassAttendance(entries);
 
-      // Otomatis ke-backup di aplikasi (Local storage + Cloud)
       try {
         const backupKey = `tamvesta_backup_attendance_${selectedKelas}_${attendanceDate}`;
         localStorage.setItem(backupKey, JSON.stringify({
@@ -790,11 +813,13 @@ export const TeacherDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOp
       const timeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
       setLastBackupTime(timeStr);
       setAttendanceSuccess(`Absensi kelas ${selectedKelas} (${entries.length} siswa) berhasil disimpan!`);
+      showSuccess('Absensi Disimpan', `Presensi kelas ${selectedKelas} (${entries.length} siswa) tersimpan.`);
       setAutoBackupMessage(`✓ Otomatis ter-backup di aplikasi TAMVESTA (${timeStr} WIB)`);
       setTimeout(() => setAutoBackupMessage(null), 6000);
       setTimeout(() => setAttendanceSuccess(null), 4000);
     } catch (err: any) {
       setGlobalError(err.message || 'Gagal menyimpan absensi kelas.');
+      showError('Gagal Menyimpan Absensi', err.message || 'Gagal menyimpan absensi kelas.');
       setTimeout(() => setGlobalError(null), 4000);
     } finally {
       setAttendanceSaving(false);
@@ -806,7 +831,7 @@ export const TeacherDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOp
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 20 * 1024 * 1024) {
-      alert('Ukuran file maksimal 20MB.');
+      showError('File Terlalu Besar', 'Ukuran file maksimal 20MB.');
       return;
     }
     const reader = new FileReader();
@@ -876,7 +901,7 @@ export const TeacherDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOp
 
       XLSX.writeFile(wb, `File_Absen_${selectedKelas.replace(/\s+/g, '_')}_${attendanceDate}.xlsx`);
     } catch (err: any) {
-      alert('Gagal mengekspor Excel: ' + err.message);
+      showError('Gagal Ekspor Excel', err.message);
     }
   };
 
@@ -973,7 +998,7 @@ export const TeacherDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOp
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      alert('Gagal mengekspor Word: ' + err.message);
+      showError('Gagal Ekspor Word', err.message);
     }
   };
 
@@ -2920,42 +2945,28 @@ export const TeacherDashboard: React.FC<{ onOpenScanner: () => void }> = ({ onOp
           </div>
         </div>
       )}
-      {/* MODAL KONFIRMASI HAPUS KUIS PERMANEN */}
-      {quizToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-5 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto border border-rose-200 shadow-inner">
-              <Trash2 className="w-8 h-8 text-rose-600" />
-            </div>
+      <ConfirmDeleteModal
+        isOpen={Boolean(quizToDelete)}
+        title="Hapus Kuis Permanen"
+        message="Apakah Anda yakin ingin menghapus data ini secara permanen?"
+        itemName={quizToDelete ? `${quizToDelete.title} (${quizToDelete.token})` : undefined}
+        warningText="Seluruh riwayat nilai dan peserta akan dihapus selamanya dari database."
+        loading={quizDeleting}
+        onCancel={() => setQuizToDelete(null)}
+        onConfirm={() => {
+          if (quizToDelete) return confirmExecuteDelete(quizToDelete.id);
+        }}
+      />
 
-            <div className="space-y-1.5">
-              <h3 className="text-base font-black text-slate-900">
-                Hapus Kuis Permanen?
-              </h3>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Kuis <strong className="text-slate-800">"{quizToDelete.title}"</strong> (Token: <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono font-bold text-blue-700">{quizToDelete.token}</code>) akan dihapus secara permanen dari server dan perangkat. Seluruh riwayat nilai dan peserta akan dibersihkan selamanya.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2.5 pt-2">
-              <button
-                type="button"
-                onClick={() => setQuizToDelete(null)}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={() => confirmExecuteDelete(quizToDelete.id)}
-                className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black shadow-md shadow-rose-600/25 transition active:scale-95"
-              >
-                Ya, Hapus Permanen
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDeleteModal
+        isOpen={Boolean(articleToDelete)}
+        title="Hapus Artikel Guru"
+        message="Apakah Anda yakin ingin menghapus data ini secara permanen?"
+        itemName={articleToDelete?.title}
+        loading={articleDeleting}
+        onCancel={() => setArticleToDelete(null)}
+        onConfirm={confirmDeleteArticle}
+      />
     </div>
   );
 };

@@ -41,11 +41,20 @@ import type {
   DeviceSession,
   SchoolClass,
   SchoolActivityLog,
+  RealtimeEvent,
 } from '../types/index.ts';
 
 const DEFAULT_DATA_FILE = path.resolve(process.cwd(), 'data', 'tamvesta-data.json');
-const DATA_DIR = process.env.VERCEL ? path.join('/tmp', 'tamvesta-data') : path.resolve(process.cwd(), 'data');
+const CUSTOM_DATA_DIR = process.env.TAMVESTA_DATA_DIR ? path.resolve(process.env.TAMVESTA_DATA_DIR) : null;
+const DATA_DIR = CUSTOM_DATA_DIR || (process.env.VERCEL ? path.join('/tmp', 'tamvesta-data') : path.resolve(process.cwd(), 'data'));
 const DATA_FILE = path.join(DATA_DIR, 'tamvesta-data.json');
+
+function isGitHubCloudSyncEnabled(): boolean {
+  if (CUSTOM_DATA_DIR || process.env.DISABLE_GITHUB_SYNC === 'true' || process.env.NODE_ENV === 'test') {
+    return false;
+  }
+  return Boolean(process.env.VERCEL || process.env.ENABLE_GITHUB_SYNC === 'true');
+}
 
 function getGitHubToken(): string {
   if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
@@ -60,6 +69,7 @@ function getGitHubToken(): string {
 }
 
 export interface DatabaseSchema {
+  syncVersion?: number;
   users: User[];
   subjects: Subject[];
   books: DigitalBook[];
@@ -83,7 +93,26 @@ export interface DatabaseSchema {
   gameRooms?: any[];
   deletedUserIds?: string[];
   deletedPostIds?: string[];
+  deletedStoryIds?: string[];
   deletedQuizIds?: string[];
+  deletedSubjectIds?: string[];
+  deletedAnnouncementIds?: string[];
+  deletedScheduleIds?: string[];
+  deletedClassIds?: string[];
+  deletedDeviceIds?: string[];
+  deletedMessageIds?: string[];
+  deletedNotificationIds?: string[];
+  deletedArticleIds?: string[];
+  deletedEventIds?: string[];
+  deletedNoteIds?: string[];
+  deletedBillIds?: string[];
+  deletedDocumentIds?: string[];
+  deletedBookIds?: string[];
+  deletedLostFoundIds?: string[];
+  deletedPermissionIds?: string[];
+  deletedAppReportIds?: string[];
+  hasSeededDefaultClasses?: boolean;
+  hasSeededDefaultNotifications?: boolean;
   refreshSignals?: RefreshSignal[];
   moderationLogs?: ModerationLog[];
   directMessages?: DirectMessage[];
@@ -101,26 +130,27 @@ export interface DatabaseSchema {
 
 export function hashPassword(password: string, salt?: string): { hash: string; salt: string } {
   const chosenSalt = salt || crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, chosenSalt, 10000, 64, 'sha512').toString('hex');
-  return { hash, salt: chosenSalt };
+  const pTrim = (password || '').trim();
+  const hashHex = crypto.pbkdf2Sync(pTrim, chosenSalt, 100000, 64, 'sha512').toString('hex');
+  return { hash: `pbkdf2v2$${hashHex}`, salt: chosenSalt };
 }
 
-export function verifyPassword(password: string, hash?: string, salt?: string, initialPassword?: string): boolean {
+export function verifyPassword(password: string, hash?: string, salt?: string): boolean {
   const pTrim = (password || '').trim();
-  if (initialPassword) {
-    const initTrim = initialPassword.trim();
-    if (pTrim === initTrim || pTrim.toLowerCase() === initTrim.toLowerCase()) {
-      return true;
-    }
-  }
-  if (!hash || !salt) {
+  if (!pTrim || !hash || !salt) {
     return false;
   }
   try {
-    const newHash = crypto.pbkdf2Sync(pTrim, salt, 10000, 64, 'sha512').toString('hex');
-    const buf1 = Buffer.from(hash, 'hex');
-    const buf2 = Buffer.from(newHash, 'hex');
-    if (buf1.length === buf2.length && crypto.timingSafeEqual(buf1, buf2)) {
+    let expectedHex = hash;
+    let iterations = 10000;
+    if (hash.startsWith('pbkdf2v2$')) {
+      expectedHex = hash.slice('pbkdf2v2$'.length);
+      iterations = 100000;
+    }
+    const derivedHex = crypto.pbkdf2Sync(pTrim, salt, iterations, 64, 'sha512').toString('hex');
+    const buf1 = Buffer.from(expectedHex, 'hex');
+    const buf2 = Buffer.from(derivedHex, 'hex');
+    if (buf1.length > 0 && buf1.length === buf2.length && crypto.timingSafeEqual(buf1, buf2)) {
       return true;
     }
   } catch {
@@ -338,10 +368,10 @@ export function getInitialData(): DatabaseSchema {
     name: 'Administrator Tamansiswa Batam',
     role: 'admin',
     jabatan: 'Administrator Utama TAMVESTA',
-    initialPassword: 'TAMVESTA123',
     passwordHash: adminPass.hash,
     salt: adminPass.salt,
-    mustChangePassword: false, // Password admin tetap & tidak diubah, tidak minta ganti
+    tokenVersion: 0,
+    mustChangePassword: false,
     isActive: true,
     qrToken: generateQrToken('user_admin_tamansiswa', 'TAMANSISWA'),
     createdAt: now,
@@ -356,10 +386,9 @@ export function getInitialData(): DatabaseSchema {
     name: 'Support TAMVESTA',
     role: 'support',
     jabatan: 'Developer Resmi TAMVESTA',
-    initialPassword: 'TAMVESTATAMSIS',
-    password: 'TAMVESTATAMSIS',
     passwordHash: supportPass.hash,
     salt: supportPass.salt,
+    tokenVersion: 0,
     mustChangePassword: false,
     isActive: true,
     isVerified: true,
@@ -374,7 +403,7 @@ export function getInitialData(): DatabaseSchema {
   };
 
   // 2. Akun Resmi Guru & Staf Tamansiswa Batam (Daftar Akun Awal TAMVESTA)
-  const staffUsers: User[] = OFFICIAL_STAFF_LIST.map((staff, index) => {
+  const staffUsers: User[] = OFFICIAL_STAFF_LIST.map((staff) => {
     const pass = hashPassword(staff.initialPassword);
     const id = `user_staff_${staff.username.replace(/[^a-zA-Z0-9_]/g, '_')}`;
     return {
@@ -383,19 +412,19 @@ export function getInitialData(): DatabaseSchema {
       name: staff.name,
       role: staff.role,
       jabatan: staff.jabatan,
-      initialPassword: staff.initialPassword,
-      password: staff.initialPassword,
       passwordHash: pass.hash,
       salt: pass.salt,
-      mustChangePassword: false, // Guru & staf tidak dipaksa ganti password
+      tokenVersion: 0,
+      mustChangePassword: false,
       isActive: true,
+      isVerified: staff.role === 'guru' ? true : undefined,
+      badgeType: staff.role === 'guru' ? 'green' : undefined,
       qrToken: generateQrToken(id, staff.username),
       createdAt: now,
       updatedAt: now,
     };
   });
 
-  
   // 3. Akun Siswa Resmi SD & SMP Tamansiswa Batam
   const studentUsers: User[] = OFFICIAL_STUDENT_LIST.map((student) => {
     const pass = hashPassword(student.initialPassword);
@@ -407,10 +436,9 @@ export function getInitialData(): DatabaseSchema {
       role: 'siswa' as UserRole,
       kelas: student.kelas,
       gender: student.gender,
-      initialPassword: student.initialPassword,
-      password: student.initialPassword,
       passwordHash: pass.hash,
       salt: pass.salt,
+      tokenVersion: 0,
       mustChangePassword: false,
       isActive: true,
       qrToken: generateQrToken(id, student.username),
@@ -420,6 +448,7 @@ export function getInitialData(): DatabaseSchema {
   });
 
   return {
+    syncVersion: 1,
     users: [adminUser, supportUser, ...staffUsers, ...studentUsers],
     subjects: [],
     books: [],
@@ -442,7 +471,26 @@ export function getInitialData(): DatabaseSchema {
     tuMonthlyReports: [],
     deletedUserIds: [],
     deletedPostIds: [],
+    deletedStoryIds: [],
     deletedQuizIds: [],
+    deletedSubjectIds: [],
+    deletedAnnouncementIds: [],
+    deletedScheduleIds: [],
+    deletedClassIds: [],
+    deletedDeviceIds: [],
+    deletedMessageIds: [],
+    deletedNotificationIds: [],
+    deletedArticleIds: [],
+    deletedEventIds: [],
+    deletedNoteIds: [],
+    deletedBillIds: [],
+    deletedDocumentIds: [],
+    deletedBookIds: [],
+    deletedLostFoundIds: [],
+    deletedPermissionIds: [],
+    deletedAppReportIds: [],
+    hasSeededDefaultClasses: false,
+    hasSeededDefaultNotifications: false,
     refreshSignals: [],
     moderationLogs: [],
     directMessages: [],
@@ -458,17 +506,137 @@ export function getInitialData(): DatabaseSchema {
 class DatabaseManager {
   private data: DatabaseSchema;
   private isSaving = false;
-  private isSyncingGitHub = false;
+  private loadPromise: Promise<void> | null = null;
+  private lastGitHubLoadAt = 0;
+  private realtimeListeners = new Set<(event: RealtimeEvent) => void>();
+  private realtimeBuffer: RealtimeEvent[] = [];
+  private realtimeSeq = 0;
+  private seenCloudAdminNotifIds = new Set<string>();
 
   constructor() {
     this.data = this.loadData();
-    if (process.env.VERCEL) { this.loadFromGitHubAsync().catch(() => {}); }
+    if (isGitHubCloudSyncEnabled()) {
+      this.loadFromGitHubAsync().catch(() => {});
+    }
   }
 
-  
+  public getSyncVersion(): number {
+    return this.data.syncVersion || 1;
+  }
+
+  public getRealtimeSeq(): number {
+    return this.realtimeSeq;
+  }
+
+  public subscribeRealtime(listener: (event: RealtimeEvent) => void): () => void {
+    this.realtimeListeners.add(listener);
+    return () => {
+      this.realtimeListeners.delete(listener);
+    };
+  }
+
+  public emitRealtimeEvent(ev: Omit<RealtimeEvent, 'id' | 'seq' | 'createdAt'>): RealtimeEvent {
+    const seq = ++this.realtimeSeq;
+    const event: RealtimeEvent = {
+      ...ev,
+      id: `rt_${Date.now()}_${seq}`,
+      seq,
+      createdAt: new Date().toISOString(),
+    };
+    this.realtimeBuffer.push(event);
+    if (this.realtimeBuffer.length > 400) {
+      this.realtimeBuffer = this.realtimeBuffer.slice(-400);
+    }
+    this.realtimeListeners.forEach((fn) => {
+      try {
+        fn(event);
+      } catch (_) {}
+    });
+    return event;
+  }
+
+  public isEventVisibleToUser(event: RealtimeEvent, user?: User | null, deviceId?: string): boolean {
+    if (!event) return false;
+    // Strict isolation: targetRoles (e.g. ['admin']) must NEVER leak to non-matching roles
+    if (Array.isArray(event.targetRoles) && event.targetRoles.length > 0) {
+      if (!user || !event.targetRoles.includes(user.role)) return false;
+    }
+    if (event.targetUserId) {
+      if (!user || user.id !== event.targetUserId) return false;
+    }
+    if (event.notification?.targetRole) {
+      if (!user || user.role !== event.notification.targetRole) return false;
+    }
+    if (Array.isArray(event.notification?.targetRoles) && event.notification.targetRoles.length > 0) {
+      if (!user || !event.notification.targetRoles.includes(user.role)) return false;
+    }
+    // Avoid duplicate notification toast on the exact originating device (or same actor if deviceId missing)
+    if (event.type === 'admin_notification') {
+      if (deviceId && event.excludeDeviceId && deviceId === event.excludeDeviceId) {
+        return false;
+      }
+      if (!deviceId && user && event.excludeUserId && user.id === event.excludeUserId) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  public getRealtimeEventsSince(sinceSeq: number, user?: User | null, deviceId?: string): { seq: number; dbVersion: number; events: RealtimeEvent[] } {
+    // Handle cold-started serverless instance where client's previous seq exceeds this instance's seq
+    const effectiveSince = sinceSeq > this.realtimeSeq ? 0 : sinceSeq;
+    const events = this.realtimeBuffer
+      .filter((e) => e.seq > effectiveSince && this.isEventVisibleToUser(e, user, deviceId));
+    return {
+      seq: this.realtimeSeq,
+      dbVersion: this.getSyncVersion(),
+      events,
+    };
+  }
+
+  public isUserDeleted(idOrUsername: string): boolean {
+    const clean = (idOrUsername || '').trim().toLowerCase().replace(/^@+/, '');
+    if (!clean) return false;
+    return (this.data.deletedUserIds || []).some(
+      (d) => (d || '').trim().toLowerCase().replace(/^@+/, '') === clean
+    );
+  }
+
+  public isDeviceSessionDeleted(sessionId: string): boolean {
+    if (!sessionId) return false;
+    return (this.data.deletedDeviceIds || []).includes(sessionId);
+  }
+
+  private mergeIdArrays(a?: string[], b?: string[]): string[] {
+    return Array.from(new Set([...(a || []), ...(b || [])].filter(Boolean)));
+  }
+
+  private recordTombstone(key: keyof DatabaseSchema, id: string) {
+    if (!id) return;
+    const arr = Array.isArray(this.data[key]) ? ([...(this.data[key] as string[])]) : [];
+    if (!arr.includes(id)) {
+      arr.push(id);
+      (this.data as any)[key] = arr;
+    }
+  }
+
   /** Muat data terbaru dari GitHub (untuk Vercel cold start persistence) */
-  public async reloadFromGitHub(): Promise<void> {
-    return this.loadFromGitHubAsync();
+  public async reloadFromGitHub(force = false): Promise<void> {
+    if (!isGitHubCloudSyncEnabled()) {
+      return;
+    }
+    const now = Date.now();
+    if (!force && now - this.lastGitHubLoadAt < 2000 && !this.loadPromise) {
+      return;
+    }
+    if (this.loadPromise) {
+      return this.loadPromise;
+    }
+    this.loadPromise = this.loadFromGitHubAsync().finally(() => {
+      this.lastGitHubLoadAt = Date.now();
+      this.loadPromise = null;
+    });
+    return this.loadPromise;
   }
 
   private async loadFromGitHubAsync(): Promise<void> {
@@ -533,39 +701,100 @@ class DatabaseManager {
       }
       if (!parsed || !Array.isArray(parsed.users)) return;
 
+      const normalizeId = (val: string) => (val || '').trim().toLowerCase().replace(/^@+/, '');
+      const purgedSeedQuizIds = ['quiz_1793433581388', 'quiz_1793438004502', 'quiz_1793438743437'];
+
+      // 1. Gabungkan SEMUA tombstone penghapusan permanen terlebih dahulu
+      this.data.deletedUserIds = this.mergeIdArrays(this.data.deletedUserIds, parsed.deletedUserIds);
+      this.data.deletedPostIds = this.mergeIdArrays(this.data.deletedPostIds, parsed.deletedPostIds);
+      this.data.deletedStoryIds = this.mergeIdArrays(this.data.deletedStoryIds, parsed.deletedStoryIds);
+      this.data.deletedQuizIds = this.mergeIdArrays(
+        [...purgedSeedQuizIds, ...(this.data.deletedQuizIds || [])],
+        parsed.deletedQuizIds
+      );
+      this.data.deletedSubjectIds = this.mergeIdArrays(this.data.deletedSubjectIds, parsed.deletedSubjectIds);
+      this.data.deletedAnnouncementIds = this.mergeIdArrays(this.data.deletedAnnouncementIds, parsed.deletedAnnouncementIds);
+      this.data.deletedScheduleIds = this.mergeIdArrays(this.data.deletedScheduleIds, parsed.deletedScheduleIds);
+      this.data.deletedClassIds = this.mergeIdArrays(this.data.deletedClassIds, parsed.deletedClassIds);
+      this.data.deletedDeviceIds = this.mergeIdArrays(this.data.deletedDeviceIds, parsed.deletedDeviceIds);
+      this.data.deletedMessageIds = this.mergeIdArrays(this.data.deletedMessageIds, parsed.deletedMessageIds);
+      this.data.deletedNotificationIds = this.mergeIdArrays(this.data.deletedNotificationIds, parsed.deletedNotificationIds);
+      this.data.deletedArticleIds = this.mergeIdArrays(this.data.deletedArticleIds, parsed.deletedArticleIds);
+      this.data.deletedEventIds = this.mergeIdArrays(this.data.deletedEventIds, parsed.deletedEventIds);
+      this.data.deletedNoteIds = this.mergeIdArrays(this.data.deletedNoteIds, parsed.deletedNoteIds);
+      this.data.deletedBillIds = this.mergeIdArrays(this.data.deletedBillIds, parsed.deletedBillIds);
+      this.data.deletedDocumentIds = this.mergeIdArrays(this.data.deletedDocumentIds, parsed.deletedDocumentIds);
+
+      if (parsed.hasSeededDefaultClasses) this.data.hasSeededDefaultClasses = true;
+      if (parsed.hasSeededDefaultNotifications) this.data.hasSeededDefaultNotifications = true;
+
+      const deletedUserSet = new Set((this.data.deletedUserIds || []).map(normalizeId));
+      const isUserDeleted = (u: any) => {
+        if (!u) return true;
+        if (isDemoStudent(u)) return true;
+        const idNorm = normalizeId(u.id);
+        const unNorm = normalizeId(u.username);
+        return (idNorm && deletedUserSet.has(idNorm)) || (unNorm && deletedUserSet.has(unNorm));
+      };
+
+      const deletedPostSet = new Set((this.data.deletedPostIds || []).map((id) => (id || '').trim()));
+      const deletedStorySet = new Set((this.data.deletedStoryIds || []).map((id) => (id || '').trim()));
+      const deletedQuizSet = new Set((this.data.deletedQuizIds || []).map((id) => (id || '').trim().toLowerCase()));
+      const deletedSubjectSet = new Set((this.data.deletedSubjectIds || []).map((id) => (id || '').trim()));
+      const deletedAnnouncementSet = new Set((this.data.deletedAnnouncementIds || []).map((id) => (id || '').trim()));
+      const deletedScheduleSet = new Set((this.data.deletedScheduleIds || []).map((id) => (id || '').trim()));
+      const deletedClassSet = new Set((this.data.deletedClassIds || []).map((id) => (id || '').trim()));
+      const deletedDeviceSet = new Set((this.data.deletedDeviceIds || []).map((id) => (id || '').trim()));
+      const deletedMessageSet = new Set((this.data.deletedMessageIds || []).map((id) => (id || '').trim()));
+      const deletedNotificationSet = new Set((this.data.deletedNotificationIds || []).map((id) => (id || '').trim()));
+      const deletedArticleSet = new Set((this.data.deletedArticleIds || []).map((id) => (id || '').trim()));
+      const deletedEventSet = new Set((this.data.deletedEventIds || []).map((id) => (id || '').trim()));
+      const deletedNoteSet = new Set((this.data.deletedNoteIds || []).map((id) => (id || '').trim()));
+      const deletedBillSet = new Set((this.data.deletedBillIds || []).map((id) => (id || '').trim()));
+      const deletedDocumentSet = new Set((this.data.deletedDocumentIds || []).map((id) => (id || '').trim()));
+
+      // 2. Bersihkan akun yang sudah dihapus permanen di memori sebelum merge
+      this.data.users = (this.data.users || []).filter((u) => !isUserDeleted(u));
+
       if (Array.isArray(parsed.users)) {
         parsed.users.forEach((ghUser: any) => {
-          if (isDemoStudent(ghUser)) return; // Blokir seluruh akun siswa demo lama
-          const cleanGh = (ghUser.username || '').toLowerCase().replace(/^@+/, '');
-          const isDeleted = (this.data.deletedUserIds || []).some(
-            (did) => did === ghUser.id || did.toLowerCase() === cleanGh || did.toLowerCase() === (ghUser.username || '').toLowerCase()
-          );
-          if (isDeleted) return; // Akun terhapus permanen
+          if (isUserDeleted(ghUser)) return; // Akun terhapus permanen
+          const cleanGh = normalizeId(ghUser.username);
           const existing = this.data.users.find(
-            (u) => u.id === ghUser.id || (u.username || '').toLowerCase().replace(/^@+/, '') === cleanGh
+            (u) => u.id === ghUser.id || normalizeId(u.username) === cleanGh
           );
           if (!existing) {
-            this.data.users.push(ghUser);
+            const cleaned = { ...ghUser };
+            delete cleaned.password;
+            delete cleaned.initialPassword;
+            this.data.users.push(cleaned);
           } else {
             const memTime = new Date(existing.updatedAt || 0).getTime();
             const ghTime = new Date(ghUser.updatedAt || 0).getTime();
-            // Hanya perbarui kredensial password dari GitHub jika data GitHub memang lebih baru daripada data di memori
+            // Hanya perbarui field dari GitHub jika data GitHub lebih baru atau sama daripada memori
             if (ghTime >= memTime) {
-              if (ghUser.password) existing.password = ghUser.password;
-              if (ghUser.initialPassword) existing.initialPassword = ghUser.initialPassword;
-              if (ghUser.passwordHash) existing.passwordHash = ghUser.passwordHash;
-              if (ghUser.salt) existing.salt = ghUser.salt;
+              if (ghUser.passwordHash && ghUser.salt) {
+                existing.passwordHash = ghUser.passwordHash;
+                existing.salt = ghUser.salt;
+              }
               if (ghUser.passwordChanged !== undefined) existing.passwordChanged = ghUser.passwordChanged;
+              if (ghUser.tokenVersion !== undefined) existing.tokenVersion = Math.max(existing.tokenVersion ?? 0, ghUser.tokenVersion);
+              if (ghUser.role) existing.role = ghUser.role;
+              if (ghUser.jabatan !== undefined) existing.jabatan = ghUser.jabatan;
+              if (ghUser.name) existing.name = ghUser.name;
+              if (ghUser.kelas !== undefined) existing.kelas = ghUser.kelas;
+              if (ghUser.gender) existing.gender = ghUser.gender;
+              if (ghUser.isActive !== undefined) existing.isActive = ghUser.isActive;
+              if (ghUser.isVerified !== undefined) existing.isVerified = ghUser.isVerified;
+              if (ghUser.badgeType !== undefined) existing.badgeType = ghUser.badgeType;
+              if (ghUser.isAlumni !== undefined) existing.isAlumni = ghUser.isAlumni;
+              if (ghUser.phone !== undefined) existing.phone = ghUser.phone;
+              if (ghUser.email !== undefined) existing.email = ghUser.email;
+              if (ghUser.bio !== undefined) existing.bio = ghUser.bio;
+              if ((ghUser as any).profilePhoto !== undefined) (existing as any).profilePhoto = (ghUser as any).profilePhoto;
+              if (ghUser.avatarUrl) existing.avatarUrl = ghUser.avatarUrl;
+              if (ghUser.updatedAt) existing.updatedAt = ghUser.updatedAt;
             }
-            if (ghUser.phone) existing.phone = ghUser.phone;
-            if (ghUser.email) existing.email = ghUser.email;
-            if (ghUser.bio) existing.bio = ghUser.bio;
-            if ((ghUser as any).profilePhoto) (existing as any).profilePhoto = (ghUser as any).profilePhoto;
-            if (ghUser.avatarUrl && (!existing.avatarUrl || existing.avatarUrl.includes('dicebear.com'))) existing.avatarUrl = ghUser.avatarUrl;
-            if (ghUser.name) existing.name = ghUser.name;
-            if (ghUser.kelas) existing.kelas = ghUser.kelas;
-            if (ghUser.gender) existing.gender = ghUser.gender;
-            if (ghUser.isActive !== undefined) existing.isActive = ghUser.isActive;
           }
         });
 
@@ -577,32 +806,172 @@ class DatabaseManager {
           }
         });
       }
+
       if (Array.isArray(parsed.posts)) {
         const postMap = new Map<string, any>();
-        this.data.posts.forEach((p) => {
-          if (!p.id.startsWith('post_seed_')) postMap.set(p.id, p);
+        (this.data.posts || []).forEach((p) => {
+          if (!p.id.startsWith('post_seed_') && !deletedPostSet.has(p.id)) postMap.set(p.id, p);
         });
         parsed.posts.forEach((p: any) => {
-          if (p.id.startsWith('post_seed_')) return;
-          if ((this.data.deletedPostIds || []).includes(p.id)) return;
+          if (p.id.startsWith('post_seed_') || deletedPostSet.has(p.id)) return;
           postMap.set(p.id, p);
         });
         this.data.posts = Array.from(postMap.values()).sort(
           (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
+      } else {
+        this.data.posts = (this.data.posts || []).filter((p) => !deletedPostSet.has(p.id));
       }
+
       if (Array.isArray(parsed.stories)) {
         const storyMap = new Map<string, any>();
-        this.data.stories.forEach((s) => {
-          if (!s.id.startsWith('story_seed_')) storyMap.set(s.id, s);
+        (this.data.stories || []).forEach((s) => {
+          if (!s.id.startsWith('story_seed_') && !deletedStorySet.has(s.id)) storyMap.set(s.id, s);
         });
         parsed.stories.forEach((s: any) => {
-          if (s.id.startsWith('story_seed_')) return;
+          if (s.id.startsWith('story_seed_') || deletedStorySet.has(s.id)) return;
           storyMap.set(s.id, s);
         });
         this.data.stories = Array.from(storyMap.values())
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      } else {
+        this.data.stories = (this.data.stories || []).filter((s) => !deletedStorySet.has(s.id));
       }
+
+      if (Array.isArray(parsed.subjects)) {
+        const subjMap = new Map<string, Subject>();
+        (this.data.subjects || []).forEach((s) => {
+          if (!deletedSubjectSet.has(s.id)) subjMap.set(s.id, s);
+        });
+        parsed.subjects.forEach((s: Subject) => {
+          if (s?.id && !deletedSubjectSet.has(s.id)) subjMap.set(s.id, s);
+        });
+        this.data.subjects = Array.from(subjMap.values());
+      } else {
+        this.data.subjects = (this.data.subjects || []).filter((s) => !deletedSubjectSet.has(s.id));
+      }
+
+      if (Array.isArray(parsed.announcements)) {
+        const annMap = new Map<string, Announcement>();
+        (this.data.announcements || []).forEach((a) => {
+          if (!deletedAnnouncementSet.has(a.id)) annMap.set(a.id, a);
+        });
+        parsed.announcements.forEach((a: Announcement) => {
+          if (a?.id && !deletedAnnouncementSet.has(a.id)) annMap.set(a.id, a);
+        });
+        this.data.announcements = Array.from(annMap.values())
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      } else {
+        this.data.announcements = (this.data.announcements || []).filter((a) => !deletedAnnouncementSet.has(a.id));
+      }
+
+      if (Array.isArray(parsed.notifications)) {
+        const notifMap = new Map<string, AppNotification>();
+        (this.data.notifications || []).forEach((n) => {
+          if (!deletedNotificationSet.has(n.id)) notifMap.set(n.id, n);
+        });
+        const newlyDiscoveredAdminNotifs: AppNotification[] = [];
+        parsed.notifications.forEach((n: AppNotification) => {
+          if (!n?.id || deletedNotificationSet.has(n.id)) return;
+          const ex = notifMap.get(n.id);
+          if (!ex && n.type === 'admin_account_event' && !this.seenCloudAdminNotifIds.has(n.id)) {
+            const ageMs = Date.now() - new Date(n.createdAt || 0).getTime();
+            if (ageMs >= -10000 && ageMs < 5 * 60 * 1000) {
+              newlyDiscoveredAdminNotifs.push(n);
+            }
+            this.seenCloudAdminNotifIds.add(n.id);
+          }
+          notifMap.set(n.id, ex ? { ...ex, ...n } : n);
+        });
+        this.data.notifications = Array.from(notifMap.values())
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        newlyDiscoveredAdminNotifs.forEach((n) => {
+          this.emitRealtimeEvent({
+            type: 'admin_notification',
+            entity: 'users',
+            action: 'notification',
+            entityId: n.linkId,
+            targetRoles: n.targetRoles || ['admin'],
+            excludeUserId: n.excludeUserId,
+            excludeDeviceId: n.excludeDeviceId,
+            notification: n,
+          });
+        });
+      } else {
+        this.data.notifications = (this.data.notifications || []).filter((n) => !deletedNotificationSet.has(n.id));
+      }
+
+      if (Array.isArray(parsed.articles)) {
+        const artMap = new Map<string, TeacherArticle>();
+        (this.data.articles || []).forEach((a) => {
+          if (!deletedArticleSet.has(a.id)) artMap.set(a.id, a);
+        });
+        parsed.articles.forEach((a: TeacherArticle) => {
+          if (a?.id && !deletedArticleSet.has(a.id)) artMap.set(a.id, a);
+        });
+        this.data.articles = Array.from(artMap.values())
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      } else {
+        this.data.articles = (this.data.articles || []).filter((a) => !deletedArticleSet.has(a.id));
+      }
+
+      if (Array.isArray(parsed.attendanceEvents)) {
+        const evtMap = new Map<string, AttendanceEvent>();
+        (this.data.attendanceEvents || []).forEach((e) => {
+          if (!deletedEventSet.has(e.id)) evtMap.set(e.id, e);
+        });
+        parsed.attendanceEvents.forEach((e: AttendanceEvent) => {
+          if (e?.id && !deletedEventSet.has(e.id)) evtMap.set(e.id, e);
+        });
+        this.data.attendanceEvents = Array.from(evtMap.values());
+      } else {
+        this.data.attendanceEvents = (this.data.attendanceEvents || []).filter((e) => !deletedEventSet.has(e.id));
+      }
+
+      if (Array.isArray(parsed.notes)) {
+        const noteMap = new Map<string, PersonalNote>();
+        (this.data.notes || []).forEach((n) => {
+          if (!deletedNoteSet.has(n.id)) noteMap.set(n.id, n);
+        });
+        parsed.notes.forEach((n: PersonalNote) => {
+          if (!n?.id || deletedNoteSet.has(n.id)) return;
+          const ex = noteMap.get(n.id);
+          if (!ex || new Date(n.updatedAt || n.createdAt || 0).getTime() >= new Date(ex.updatedAt || ex.createdAt || 0).getTime()) {
+            noteMap.set(n.id, n);
+          }
+        });
+        this.data.notes = Array.from(noteMap.values());
+      } else {
+        this.data.notes = (this.data.notes || []).filter((n) => !deletedNoteSet.has(n.id));
+      }
+
+      if (Array.isArray(parsed.tuitionBills)) {
+        const billMap = new Map<string, TuitionBill>();
+        (this.data.tuitionBills || []).forEach((b) => {
+          if (!deletedBillSet.has(b.id)) billMap.set(b.id, b);
+        });
+        parsed.tuitionBills.forEach((b: TuitionBill) => {
+          if (b?.id && !deletedBillSet.has(b.id)) billMap.set(b.id, b);
+        });
+        this.data.tuitionBills = Array.from(billMap.values());
+      } else {
+        this.data.tuitionBills = (this.data.tuitionBills || []).filter((b) => !deletedBillSet.has(b.id));
+      }
+
+      if (Array.isArray(parsed.tuDocuments)) {
+        const docMap = new Map<string, TuDocument>();
+        (this.data.tuDocuments || []).forEach((d) => {
+          if (!deletedDocumentSet.has(d.id)) docMap.set(d.id, d);
+        });
+        parsed.tuDocuments.forEach((d: TuDocument) => {
+          if (d?.id && !deletedDocumentSet.has(d.id)) docMap.set(d.id, d);
+        });
+        this.data.tuDocuments = Array.from(docMap.values());
+      } else {
+        this.data.tuDocuments = (this.data.tuDocuments || []).filter((d) => !deletedDocumentSet.has(d.id));
+      }
+
       if (Array.isArray(parsed.passwordResetRequests)) {
         parsed.passwordResetRequests.forEach((req: any) => {
           const existingIdx = this.data.passwordResetRequests.findIndex((r) => r.id === req.id);
@@ -622,28 +991,84 @@ class DatabaseManager {
           }
         });
       }
+
+      const dmMap = new Map<string, DirectMessage>();
+      (this.data.directMessages || []).forEach((m) => {
+        if (m?.id && !deletedMessageSet.has(m.id) && !m.isDeleted) dmMap.set(m.id, m);
+      });
       if (Array.isArray(parsed.directMessages)) {
-        this.data.directMessages = parsed.directMessages;
+        parsed.directMessages.forEach((m: DirectMessage) => {
+          if (!m?.id || deletedMessageSet.has(m.id) || m.isDeleted) return;
+          const ex = dmMap.get(m.id);
+          dmMap.set(m.id, ex ? { ...m, ...ex, isRead: Boolean(ex.isRead || m.isRead) } : m);
+        });
       }
-      if (Array.isArray(parsed.studentNotes)) {
-        this.data.studentNotes = parsed.studentNotes;
-      }
+      this.data.directMessages = Array.from(dmMap.values())
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+      const lostFoundDelSet = new Set(this.data.deletedLostFoundIds || []);
       if (Array.isArray(parsed.lostFoundItems)) {
-        this.data.lostFoundItems = parsed.lostFoundItems;
+        const lfMap = new Map<string, any>();
+        (this.data.lostFoundItems || []).forEach((item) => {
+          if (item?.id && !lostFoundDelSet.has(item.id)) lfMap.set(item.id, item);
+        });
+        parsed.lostFoundItems.forEach((item: any) => {
+          if (!item?.id || lostFoundDelSet.has(item.id)) return;
+          const ex = lfMap.get(item.id);
+          if (!ex || new Date(item.updatedAt || item.createdAt || 0).getTime() >= new Date(ex.updatedAt || ex.createdAt || 0).getTime()) {
+            lfMap.set(item.id, item);
+          }
+        });
+        this.data.lostFoundItems = Array.from(lfMap.values());
       }
+
+      const permDelSet = new Set(this.data.deletedPermissionIds || []);
       if (Array.isArray(parsed.activityPermissions)) {
-        this.data.activityPermissions = parsed.activityPermissions;
+        const permMap = new Map<string, any>();
+        (this.data.activityPermissions || []).forEach((p) => {
+          if (p?.id && !permDelSet.has(p.id)) permMap.set(p.id, p);
+        });
+        parsed.activityPermissions.forEach((p: any) => {
+          if (!p?.id || permDelSet.has(p.id)) return;
+          const ex = permMap.get(p.id);
+          if (!ex || new Date(p.updatedAt || p.createdAt || 0).getTime() >= new Date(ex.updatedAt || ex.createdAt || 0).getTime()) {
+            permMap.set(p.id, p);
+          }
+        });
+        this.data.activityPermissions = Array.from(permMap.values());
       }
+
+      const repDelSet = new Set(this.data.deletedAppReportIds || []);
       if (Array.isArray(parsed.appReports)) {
-        this.data.appReports = parsed.appReports;
+        const repMap = new Map<string, any>();
+        (this.data.appReports || []).forEach((r) => {
+          if (r?.id && !repDelSet.has(r.id)) repMap.set(r.id, r);
+        });
+        parsed.appReports.forEach((r: any) => {
+          if (!r?.id || repDelSet.has(r.id)) return;
+          const ex = repMap.get(r.id);
+          if (!ex || new Date(r.updatedAt || r.createdAt || 0).getTime() >= new Date(ex.updatedAt || ex.createdAt || 0).getTime()) {
+            repMap.set(r.id, r);
+          }
+        });
+        this.data.appReports = Array.from(repMap.values());
       }
-      const purgedSeedQuizIds = ['quiz_1793433581388', 'quiz_1793438004502', 'quiz_1793438743437'];
-      this.data.deletedQuizIds = Array.from(new Set([
-        ...purgedSeedQuizIds,
-        ...(this.data.deletedQuizIds || []),
-        ...(Array.isArray(parsed.deletedQuizIds) ? parsed.deletedQuizIds : []),
-      ]));
-      const deletedQuizSet = new Set((this.data.deletedQuizIds || []).map((id) => (id || '').trim().toLowerCase()));
+
+      if (Array.isArray(parsed.studentNotes)) {
+        const snMap = new Map<string, any>();
+        (this.data.studentNotes || []).forEach((n) => {
+          if (n?.id && !deletedUserSet.has(normalizeId(n.userId))) snMap.set(n.id, n);
+        });
+        parsed.studentNotes.forEach((n: any) => {
+          if (!n?.id || deletedUserSet.has(normalizeId(n.userId))) return;
+          const ex = snMap.get(n.id);
+          if (!ex || new Date(n.updatedAt || n.createdAt || 0).getTime() >= new Date(ex.updatedAt || ex.createdAt || 0).getTime()) {
+            snMap.set(n.id, n);
+          }
+        });
+        this.data.studentNotes = Array.from(snMap.values());
+      }
+
       if (Array.isArray(parsed.quizzes)) {
         const quizMap = new Map<string, Quiz>();
         (this.data.quizzes || []).forEach((q) => {
@@ -662,37 +1087,45 @@ class DatabaseManager {
           }
         });
         this.data.quizzes = Array.from(quizMap.values());
+      } else {
+        this.data.quizzes = (this.data.quizzes || []).filter((q) => !deletedQuizSet.has((q.id || '').trim().toLowerCase()));
       }
+
       if (Array.isArray(parsed.quizAttempts)) {
         const attemptMap = new Map<string, QuizAttempt>();
         (this.data.quizAttempts || []).forEach((a) => {
-          if (a.id && !deletedQuizSet.has(a.quizId)) attemptMap.set(a.id, a);
+          if (a.id && !deletedQuizSet.has((a.quizId || '').trim().toLowerCase())) attemptMap.set(a.id, a);
         });
         parsed.quizAttempts.forEach((a: QuizAttempt) => {
-          if (a.id && !deletedQuizSet.has(a.quizId) && !attemptMap.has(a.id)) attemptMap.set(a.id, a);
+          if (a.id && !deletedQuizSet.has((a.quizId || '').trim().toLowerCase()) && !attemptMap.has(a.id)) attemptMap.set(a.id, a);
         });
         this.data.quizAttempts = Array.from(attemptMap.values());
+      } else {
+        this.data.quizAttempts = (this.data.quizAttempts || []).filter((a) => !deletedQuizSet.has((a.quizId || '').trim().toLowerCase()));
       }
+
       if (Array.isArray(parsed.quizViolations)) {
         const violMap = new Map<string, any>();
         (this.data.quizViolations || []).forEach((v) => {
-          if (v.id && !deletedQuizSet.has(v.quizId)) violMap.set(v.id, v);
+          if (v.id && !deletedQuizSet.has((v.quizId || '').trim().toLowerCase())) violMap.set(v.id, v);
         });
         parsed.quizViolations.forEach((v: any) => {
-          if (v.id && !deletedQuizSet.has(v.quizId) && !violMap.has(v.id)) violMap.set(v.id, v);
+          if (v.id && !deletedQuizSet.has((v.quizId || '').trim().toLowerCase()) && !violMap.has(v.id)) violMap.set(v.id, v);
         });
         this.data.quizViolations = Array.from(violMap.values());
       }
+
       if (Array.isArray(parsed.quizParticipants)) {
         const partMap = new Map<string, any>();
         (this.data.quizParticipants || []).forEach((p) => {
-          if (p.id && !deletedQuizSet.has(p.quizId)) partMap.set(p.id, p);
+          if (p.id && !deletedQuizSet.has((p.quizId || '').trim().toLowerCase())) partMap.set(p.id, p);
         });
         parsed.quizParticipants.forEach((p: any) => {
-          if (p.id && !deletedQuizSet.has(p.quizId) && !partMap.has(p.id)) partMap.set(p.id, p);
+          if (p.id && !deletedQuizSet.has((p.quizId || '').trim().toLowerCase()) && !partMap.has(p.id)) partMap.set(p.id, p);
         });
         this.data.quizParticipants = Array.from(partMap.values());
       }
+
       if (Array.isArray(parsed.gameRooms)) {
         const roomMap = new Map<string, any>();
         (this.data.gameRooms || []).forEach((r) => { if (r.code) roomMap.set(r.code.toUpperCase(), r); });
@@ -713,39 +1146,60 @@ class DatabaseManager {
         const cutoff = Date.now() - 12 * 60 * 60 * 1000;
         this.data.gameRooms = Array.from(roomMap.values()).filter((r: any) => (r.createdAt || 0) > cutoff);
       }
+
       if (Array.isArray(parsed.schedules)) {
         const schedMap = new Map<string, ClassSchedule>();
-        (this.data.schedules || []).forEach((s) => schedMap.set(s.id, s));
+        (this.data.schedules || []).forEach((s) => {
+          if (!deletedScheduleSet.has(s.id)) schedMap.set(s.id, s);
+        });
         parsed.schedules.forEach((s: ClassSchedule) => {
+          if (!s?.id || deletedScheduleSet.has(s.id)) return;
           const ex = schedMap.get(s.id);
           if (!ex || new Date(s.updatedAt || 0).getTime() >= new Date(ex.updatedAt || 0).getTime()) {
             schedMap.set(s.id, s);
           }
         });
         this.data.schedules = Array.from(schedMap.values());
+      } else {
+        this.data.schedules = (this.data.schedules || []).filter((s) => !deletedScheduleSet.has(s.id));
       }
+
       if (Array.isArray(parsed.deviceSessions)) {
         const devMap = new Map<string, DeviceSession>();
-        (this.data.deviceSessions || []).forEach((d) => devMap.set(d.id, d));
+        (this.data.deviceSessions || []).forEach((d) => {
+          if (!deletedDeviceSet.has(d.id) && !deletedUserSet.has(normalizeId(d.userId))) devMap.set(d.id, d);
+        });
         parsed.deviceSessions.forEach((d: DeviceSession) => {
+          if (!d?.id || deletedDeviceSet.has(d.id) || deletedUserSet.has(normalizeId(d.userId))) return;
           const ex = devMap.get(d.id);
           if (!ex || new Date(d.lastActive || 0).getTime() >= new Date(ex.lastActive || 0).getTime()) {
             devMap.set(d.id, d);
           }
         });
         this.data.deviceSessions = Array.from(devMap.values());
+      } else {
+        this.data.deviceSessions = (this.data.deviceSessions || []).filter(
+          (d) => !deletedDeviceSet.has(d.id) && !deletedUserSet.has(normalizeId(d.userId))
+        );
       }
+
       if (Array.isArray(parsed.schoolClasses)) {
         const clsMap = new Map<string, SchoolClass>();
-        (this.data.schoolClasses || []).forEach((c) => clsMap.set(c.id, c));
+        (this.data.schoolClasses || []).forEach((c) => {
+          if (!deletedClassSet.has(c.id)) clsMap.set(c.id, c);
+        });
         parsed.schoolClasses.forEach((c: SchoolClass) => {
+          if (!c?.id || deletedClassSet.has(c.id)) return;
           const ex = clsMap.get(c.id);
           if (!ex || new Date(c.updatedAt || 0).getTime() >= new Date(ex.updatedAt || 0).getTime()) {
             clsMap.set(c.id, c);
           }
         });
         this.data.schoolClasses = Array.from(clsMap.values());
+      } else {
+        this.data.schoolClasses = (this.data.schoolClasses || []).filter((c) => !deletedClassSet.has(c.id));
       }
+
       if (Array.isArray(parsed.activityLogs)) {
         const logMap = new Map<string, SchoolActivityLog>();
         (this.data.activityLogs || []).forEach((l) => logMap.set(l.id, l));
@@ -756,6 +1210,17 @@ class DatabaseManager {
           .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
           .slice(0, 250);
       }
+      // Sinkronkan syncVersion agar client multi-instance mendeteksi pembaruan cloud
+      if (typeof parsed.syncVersion === 'number' && parsed.syncVersion > (this.data.syncVersion || 1)) {
+        this.data.syncVersion = parsed.syncVersion;
+        this.emitRealtimeEvent({
+          type: 'sync_update',
+          entity: 'system',
+          action: 'updated',
+          payload: { dbVersion: parsed.syncVersion },
+        });
+      }
+
       // Write merged snapshot ONLY to local disk (never re-push back to GitHub on read!)
       this.saveDataDirect(this.data, true);
     } catch (err) {
@@ -789,18 +1254,25 @@ class DatabaseManager {
 
         // Exclude permanently deleted users & demo student accounts
         parsed.deletedUserIds = parsed.deletedUserIds || [];
+        const normDel = (val: string) => (val || '').trim().toLowerCase().replace(/^@+/, '');
+        const deletedUserSet = new Set((parsed.deletedUserIds || []).map(normDel));
+        const isDeletedUserRef = (idOrUsername: string) => {
+          const clean = normDel(idOrUsername);
+          return Boolean(clean && deletedUserSet.has(clean));
+        };
+
         parsed.users = parsed.users.filter((u: User) => {
           if (isDemoStudent(u)) return false;
-          const uName = (u.username || '').toLowerCase();
-          return !parsed.deletedUserIds.includes(u.id) && !parsed.deletedUserIds.includes(uName);
+          return !isDeletedUserRef(u.id) && !isDeletedUserRef(u.username);
         });
         
-        // Ensure all 27 official students exist and can log in with their credentials
+        // Ensure all official students exist (unless explicitly deleted permanently by Admin)
         OFFICIAL_STUDENT_LIST.forEach((student) => {
+          const id = `user_siswa_${student.username.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+          if (isDeletedUserRef(id) || isDeletedUserRef(student.username)) return;
           const existing = parsed.users.find((u: User) => u.username.toLowerCase() === student.username.toLowerCase());
           if (!existing) {
             const pass = hashPassword(student.initialPassword);
-            const id = `user_siswa_${student.username.replace(/[^a-zA-Z0-9_]/g, '_')}`;
             parsed.users.push({
               id,
               username: student.username,
@@ -808,9 +1280,9 @@ class DatabaseManager {
               role: 'siswa',
               kelas: student.kelas,
               gender: student.gender,
-              initialPassword: student.initialPassword,
               passwordHash: pass.hash,
               salt: pass.salt,
+              tokenVersion: 0,
               mustChangePassword: false,
               isActive: true,
               qrToken: generateQrToken(id, student.username),
@@ -818,17 +1290,11 @@ class DatabaseManager {
               updatedAt: new Date().toISOString(),
             });
           } else {
-            existing.kelas = student.kelas;
-            existing.name = student.name;
-            existing.gender = student.gender;
-            if (!existing.initialPassword) {
-              existing.initialPassword = student.initialPassword;
-            }
-            if (!existing.password) {
-              existing.password = existing.initialPassword || student.initialPassword;
-            }
+            existing.kelas = existing.kelas || student.kelas;
+            existing.name = existing.name || student.name;
+            existing.gender = existing.gender || student.gender;
             if (!existing.passwordHash || !existing.salt) {
-              const pass = hashPassword(existing.password || student.initialPassword);
+              const pass = hashPassword((existing as any).password || (existing as any).initialPassword || student.initialPassword);
               existing.passwordHash = pass.hash;
               existing.salt = pass.salt;
             }
@@ -837,37 +1303,34 @@ class DatabaseManager {
         });
 
         OFFICIAL_STAFF_LIST.forEach((staff) => {
+          const id = `user_staff_${staff.username.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+          if (isDeletedUserRef(id) || isDeletedUserRef(staff.username)) return;
           const existing = parsed.users.find((u: User) => u.username.toLowerCase() === staff.username.toLowerCase());
           if (!existing) {
             const pass = hashPassword(staff.initialPassword);
-            const id = `user_staff_${staff.username.replace(/[^a-zA-Z0-9_]/g, '_')}`;
             parsed.users.push({
               id,
               username: staff.username,
               name: staff.name,
               role: staff.role,
               jabatan: staff.jabatan,
-              initialPassword: staff.initialPassword,
               passwordHash: pass.hash,
               salt: pass.salt,
+              tokenVersion: 0,
               mustChangePassword: false,
               isActive: true,
+              isVerified: staff.role === 'guru' ? true : undefined,
+              badgeType: staff.role === 'guru' ? 'green' : undefined,
               qrToken: generateQrToken(id, staff.username),
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             });
           } else {
-            existing.jabatan = staff.jabatan;
-            existing.name = staff.name;
-            existing.role = staff.role;
-            if (!existing.initialPassword) {
-              existing.initialPassword = staff.initialPassword;
-            }
-            if (!existing.password) {
-              existing.password = staff.initialPassword;
-            }
+            existing.jabatan = existing.jabatan || staff.jabatan;
+            existing.name = existing.name || staff.name;
+            existing.role = existing.role || staff.role;
             if (!existing.passwordHash || !existing.salt) {
-              const pass = hashPassword(existing.password || staff.initialPassword);
+              const pass = hashPassword((existing as any).password || (existing as any).initialPassword || staff.initialPassword);
               existing.passwordHash = pass.hash;
               existing.salt = pass.salt;
             }
@@ -875,35 +1338,55 @@ class DatabaseManager {
           }
         });
 
-        // Pastikan akun admin tidak diubah passwordnya dan tidak minta ganti password
+        // Migrasi aman hash sandi & pembersihan sandi plaintext dari penyimpanan disk
         if (parsed.users) {
-          const defaultAdminPass = hashPassword('TAMVESTA123');
-          parsed.users.forEach((u: User) => {
-            if (u.role === 'admin' || u.username === 'TAMANSISWA') {
+          parsed.users.forEach((u: any) => {
+            if (u.username === 'TAMANSISWA') {
               u.mustChangePassword = false;
-              u.passwordHash = defaultAdminPass.hash;
-              u.salt = defaultAdminPass.salt;
+              if (!u.passwordHash || !u.salt) {
+                const defaultAdminPass = hashPassword('TAMVESTA123');
+                u.passwordHash = defaultAdminPass.hash;
+                u.salt = defaultAdminPass.salt;
+              }
+            } else if (u.role === 'admin') {
+              u.mustChangePassword = false;
             }
             if (u.role === 'guru') {
               u.isVerified = true;
               u.badgeType = 'green';
             }
+
+            // Jika record lama memiliki plaintext password/initialPassword:
+            // pastikan hash cocok atau perbaiki dari password lama sebelum menghapus field plaintext
+            const legacyPlain = (u.password || u.initialPassword || '').trim();
+            if (legacyPlain) {
+              if (!u.passwordHash || !u.salt || !verifyPassword(legacyPlain, u.passwordHash, u.salt)) {
+                const upgraded = hashPassword(legacyPlain);
+                u.passwordHash = upgraded.hash;
+                u.salt = upgraded.salt;
+              }
+              delete u.password;
+              delete u.initialPassword;
+            } else {
+              if ('password' in u) delete u.password;
+              if ('initialPassword' in u) delete u.initialPassword;
+            }
+            if (u.tokenVersion === undefined) u.tokenVersion = 0;
           });
 
           // Pastikan akun Support TAMVESTA terdaftar & memiliki centang kuning Developer
           const supportExisting = parsed.users.find((u: User) => u.username.toLowerCase() === 'tamvesta');
-          const supportPass = hashPassword('TAMVESTATAMSIS');
           if (!supportExisting) {
+            const supportPass = hashPassword('TAMVESTATAMSIS');
             parsed.users.push({
               id: 'user_support_tamvesta',
               username: 'Tamvesta',
               name: 'Support TAMVESTA',
               role: 'support',
               jabatan: 'Developer Resmi TAMVESTA',
-              initialPassword: 'TAMVESTATAMSIS',
-              password: 'TAMVESTATAMSIS',
               passwordHash: supportPass.hash,
               salt: supportPass.salt,
+              tokenVersion: 0,
               mustChangePassword: false,
               isActive: true,
               isVerified: true,
@@ -925,14 +1408,24 @@ class DatabaseManager {
             supportExisting.badgeType = 'developer';
             supportExisting.followersCountDisplay = '1,1M';
             if (!supportExisting.avatarUrl) supportExisting.avatarUrl = '/assets/tamvesta_mascot.jpg';
-            supportExisting.passwordHash = supportPass.hash;
-            supportExisting.salt = supportPass.salt;
-            supportExisting.initialPassword = 'TAMVESTATAMSIS';
-            supportExisting.password = 'TAMVESTATAMSIS';
+            if (!supportExisting.passwordHash || !supportExisting.salt) {
+              const supportPass = hashPassword('TAMVESTATAMSIS');
+              supportExisting.passwordHash = supportPass.hash;
+              supportExisting.salt = supportPass.salt;
+            }
           }
         }
 
-        this.saveDataDirect(parsed);
+        // Bersihkan password plaintext dari riwayat tiket sandi lama yang sudah diproses
+        if (Array.isArray(parsed.passwordResetRequests)) {
+          parsed.passwordResetRequests.forEach((r: any) => {
+            if (r.status !== 'pending' && 'newPassword' in r) {
+              delete r.newPassword;
+            }
+          });
+        }
+
+        this.saveDataDirect(parsed, true);
 
         const purgedSeedQuizIds = ['quiz_1793433581388', 'quiz_1793438004502', 'quiz_1793438743437'];
         const parsedDeletedQuizSet = new Set([
@@ -947,43 +1440,74 @@ class DatabaseManager {
         });
         const cleanQuizIdSet = new Set(cleanQuizzes.map((q: Quiz) => (q.id || '').trim().toLowerCase()));
 
+        const delPostSet = new Set(parsed.deletedPostIds || []);
+        const delStorySet = new Set(parsed.deletedStoryIds || []);
+        const delSubjectSet = new Set(parsed.deletedSubjectIds || []);
+        const delAnnSet = new Set(parsed.deletedAnnouncementIds || []);
+        const delSchedSet = new Set(parsed.deletedScheduleIds || []);
+        const delClsSet = new Set(parsed.deletedClassIds || []);
+        const delDevSet = new Set(parsed.deletedDeviceIds || []);
+        const delMsgSet = new Set(parsed.deletedMessageIds || []);
+        const delNotifSet = new Set(parsed.deletedNotificationIds || []);
+        const delArtSet = new Set(parsed.deletedArticleIds || []);
+        const delEvtSet = new Set(parsed.deletedEventIds || []);
+        const delNoteSet = new Set(parsed.deletedNoteIds || []);
+        const delBillSet = new Set(parsed.deletedBillIds || []);
+        const delDocSet = new Set(parsed.deletedDocumentIds || []);
+
         return {
           users: parsed.users || [],
-          subjects: parsed.subjects || [],
+          subjects: (parsed.subjects || []).filter((s: Subject) => !delSubjectSet.has(s.id)),
           books: [],
-          announcements: parsed.announcements || [],
+          announcements: (parsed.announcements || []).filter((a: Announcement) => !delAnnSet.has(a.id)),
           quizzes: cleanQuizzes,
           quizAttempts: (parsed.quizAttempts || []).filter((a: QuizAttempt) => !parsedDeletedQuizSet.has((a.quizId || '').trim().toLowerCase()) && cleanQuizIdSet.has((a.quizId || '').trim().toLowerCase())),
           quizViolations: (parsed.quizViolations || []).filter((v: any) => !parsedDeletedQuizSet.has((v.quizId || '').trim().toLowerCase()) && cleanQuizIdSet.has((v.quizId || '').trim().toLowerCase())),
           quizParticipants: (parsed.quizParticipants || []).filter((p: any) => !parsedDeletedQuizSet.has((p.quizId || '').trim().toLowerCase()) && cleanQuizIdSet.has((p.quizId || '').trim().toLowerCase())),
-          attendanceEvents: parsed.attendanceEvents || [],
+          attendanceEvents: (parsed.attendanceEvents || []).filter((e: AttendanceEvent) => !delEvtSet.has(e.id)),
           attendanceRecords: parsed.attendanceRecords || [],
           passwordResetRequests: parsed.passwordResetRequests || [],
-          posts: (parsed.posts || []).filter((p: any) => !p.id.startsWith('post_seed_')),
-          stories: (parsed.stories || []).filter((s: any) => !s.id.startsWith('story_seed_')),
-          notes: parsed.notes || [],
-          notifications: parsed.notifications || [],
-          articles: parsed.articles || [],
+          posts: (parsed.posts || []).filter((p: any) => !p.id.startsWith('post_seed_') && !delPostSet.has(p.id)),
+          stories: (parsed.stories || []).filter((s: any) => !s.id.startsWith('story_seed_') && !delStorySet.has(s.id)),
+          notes: (parsed.notes || []).filter((n: PersonalNote) => !delNoteSet.has(n.id)),
+          notifications: (parsed.notifications || []).filter((n: AppNotification) => !delNotifSet.has(n.id)),
+          articles: (parsed.articles || []).filter((a: TeacherArticle) => !delArtSet.has(a.id)),
           classAttendance: parsed.classAttendance || [],
-          tuitionBills: parsed.tuitionBills || [],
+          tuitionBills: (parsed.tuitionBills || []).filter((b: TuitionBill) => !delBillSet.has(b.id)),
           tuitionTransactions: parsed.tuitionTransactions || [],
-          tuDocuments: parsed.tuDocuments || [],
+          tuDocuments: (parsed.tuDocuments || []).filter((d: TuDocument) => !delDocSet.has(d.id)),
           tuChatMessages: parsed.tuChatMessages || [],
           tuMonthlyReports: parsed.tuMonthlyReports || [],
           gameRooms: parsed.gameRooms || [],
           refreshSignals: parsed.refreshSignals || [],
           moderationLogs: parsed.moderationLogs || [],
-          directMessages: parsed.directMessages || [],
+          directMessages: (parsed.directMessages || []).filter((m: DirectMessage) => !delMsgSet.has(m.id) && !m.isDeleted),
           studentNotes: parsed.studentNotes || [],
           lostFoundItems: parsed.lostFoundItems || [],
           activityPermissions: parsed.activityPermissions || [],
           appReports: parsed.appReports || [],
+          schedules: (parsed.schedules || []).filter((s: ClassSchedule) => !delSchedSet.has(s.id)),
+          deviceSessions: (parsed.deviceSessions || []).filter((d: DeviceSession) => !delDevSet.has(d.id) && !isDeletedUserRef(d.userId)),
+          schoolClasses: (parsed.schoolClasses || []).filter((c: SchoolClass) => !delClsSet.has(c.id)),
+          activityLogs: parsed.activityLogs || [],
+          deletedUserIds: parsed.deletedUserIds || [],
           deletedPostIds: parsed.deletedPostIds || [],
-          deletedQuizIds: parsed.deletedQuizIds || [],
-          deletedUserIds: (parsed.deletedUserIds || []).filter((did: string) => {
-            const clean = (did || '').toLowerCase().replace(/^@+/, '');
-            return OLD_DEMO_USERNAMES.includes(clean) || did.startsWith('user_siswa_siswa_');
-          }),
+          deletedStoryIds: parsed.deletedStoryIds || [],
+          deletedQuizIds: Array.from(parsedDeletedQuizSet),
+          deletedSubjectIds: parsed.deletedSubjectIds || [],
+          deletedAnnouncementIds: parsed.deletedAnnouncementIds || [],
+          deletedScheduleIds: parsed.deletedScheduleIds || [],
+          deletedClassIds: parsed.deletedClassIds || [],
+          deletedDeviceIds: parsed.deletedDeviceIds || [],
+          deletedMessageIds: parsed.deletedMessageIds || [],
+          deletedNotificationIds: parsed.deletedNotificationIds || [],
+          deletedArticleIds: parsed.deletedArticleIds || [],
+          deletedEventIds: parsed.deletedEventIds || [],
+          deletedNoteIds: parsed.deletedNoteIds || [],
+          deletedBillIds: parsed.deletedBillIds || [],
+          deletedDocumentIds: parsed.deletedDocumentIds || [],
+          hasSeededDefaultClasses: parsed.hasSeededDefaultClasses ?? ((parsed.schoolClasses || []).length > 0 || (parsed.deletedClassIds || []).length > 0),
+          hasSeededDefaultNotifications: parsed.hasSeededDefaultNotifications ?? ((parsed.notifications || []).length > 0 || (parsed.deletedNotificationIds || []).length > 0),
         };
       }
     } catch (err) {
@@ -1136,11 +1660,19 @@ class DatabaseManager {
         ...purgedSeedQuizIds
       ]));
 
+      dataToSave.syncVersion = (dataToSave.syncVersion || 0) + 1;
       if (!fs.existsSync(DATA_DIR)) {
         fs.mkdirSync(DATA_DIR, { recursive: true });
       }
-      fs.writeFileSync(DATA_FILE, JSON.stringify(dataToSave, null, 2), 'utf-8');
-      if (!skipGitHubSync && (process.env.VERCEL || getGitHubToken())) {
+      const serialized = JSON.stringify(dataToSave, null, 2);
+      const tmpFile = `${DATA_FILE}.tmp.${process.pid}`;
+      try {
+        fs.writeFileSync(tmpFile, serialized, 'utf-8');
+        fs.renameSync(tmpFile, DATA_FILE);
+      } catch {
+        fs.writeFileSync(DATA_FILE, serialized, 'utf-8');
+      }
+      if (!skipGitHubSync && isGitHubCloudSyncEnabled() && getGitHubToken()) {
         this.syncToGitHub(dataToSave).catch(() => {});
       }
     } catch (err) {
@@ -1160,7 +1692,7 @@ class DatabaseManager {
 
   public async saveAsync(): Promise<void> {
     this.saveDataDirect(this.data);
-    if (process.env.VERCEL || getGitHubToken()) {
+    if (isGitHubCloudSyncEnabled() && getGitHubToken()) {
       if (this.syncPromise) {
         try { await this.syncPromise; } catch (_) {}
       }
@@ -1176,137 +1708,35 @@ class DatabaseManager {
   }
 
   // --- Users & Authentication ---
-  public findUserByUsername(username: string, candidatePassword?: string): User | undefined {
+  public findUserByUsername(username: string, _candidatePassword?: string): User | undefined {
     if (!username) return undefined;
     const raw = String(username).trim();
     const term = raw.toLowerCase().replace(/^@+/, '');
-    const alphaNumericTerm = term.replace(/[^a-z0-9]/g, '');
+    if (!term) return undefined;
 
-    // 0. If username refers to Bambang Sapto Nugroho (Kepsek SMP vs Operator)
-    if (term === 'bambang.operator' || term === 'operator' || term === 'dapodik' || term === 'operator.dapodik') {
-      const operator = this.data.users.find((u) => (u.username || '').toLowerCase() === 'bambang.operator');
-      if (operator) return operator;
-    }
-    if (term === 'bambang.kepsek' || term === 'kepsek.smp' || term === 'bambang.smp' || term === 'st.bambang') {
-      const kepsek = this.data.users.find((u) => (u.username || '').toLowerCase() === 'bambang.kepsek');
-      if (kepsek) return kepsek;
-    }
-    if (
-      ['bambang', 'bambang sapto nugroho', 'st bambang sapto nugroho s.pd'].includes(term) ||
-      alphaNumericTerm === 'bambang' ||
-      alphaNumericTerm === 'bambangsaptonugroho' ||
-      alphaNumericTerm === 'stbambangsaptonugrohospd'
-    ) {
-      const kepsek = this.data.users.find((u) => (u.username || '').toLowerCase() === 'bambang.kepsek');
-      const operator = this.data.users.find((u) => (u.username || '').toLowerCase() === 'bambang.operator');
-      if (candidatePassword) {
-        const pLower = candidatePassword.trim().toLowerCase();
-        if (operator && (pLower === 'tamvesta!b2604' || pLower === (operator.password || '').toLowerCase() || pLower === (operator.initialPassword || '').toLowerCase())) {
-          return operator;
-        }
-        if (kepsek) return kepsek;
-      }
-      if (term.includes('operator') || term.includes('dapodik')) return operator || kepsek;
-      return kepsek || operator;
-    }
-
-    // 0.5 Support TAMVESTA / Developer Official Account
-    if (
-      ['support', 'tamvesta', 'developer', 'cs', 'bantuan', 'support.tamvesta'].includes(term) ||
-      alphaNumericTerm === 'support' ||
-      alphaNumericTerm === 'tamvesta'
-    ) {
-      const support = this.data.users.find((u) => u.role === 'support' || (u.username || '').toLowerCase() === 'tamvesta');
-      const admin = this.data.users.find((u) => u.username === 'TAMANSISWA' || u.role === 'admin');
-      if (candidatePassword) {
-        const pUpper = candidatePassword.trim().toUpperCase();
-        if (pUpper === 'TAMVESTATAMSIS' && support) return support;
-        if (pUpper === 'TAMVESTA123' && admin) return admin;
-      }
-      if (term === 'tamvesta' || term === 'support' || alphaNumericTerm === 'tamvesta' || alphaNumericTerm === 'support') {
-        if (support) return support;
-      }
-    }
-
-    // 1. Admin Aliases (TAMANSISWA)
-    if (['admin', 'tamansiswa', 'administrator', 'admin.tamansiswa', 'admin.utama'].includes(term) || alphaNumericTerm === 'admin' || alphaNumericTerm === 'tamansiswa') {
-      const admin = this.data.users.find((u) => u.username === 'TAMANSISWA' || u.role === 'admin');
-      if (admin) return admin;
-    }
-
-    // 2. Titus / Yayasan Aliases
-    if (['titus', 'titus.yayasan', 'titus wahyu diatmiko', 'yayasan', 'pemimpin', 'pemimpin.tamansiswa'].includes(term) || alphaNumericTerm === 'titus' || alphaNumericTerm === 'tituswahyudiatmiko') {
-      const titus = this.data.users.find((u) => (u.username || '').toLowerCase() === 'titus.yayasan');
-      if (titus) return titus;
-    }
-
-    // 3. Margaretha Aliases
-    if (['margaretha.h', 'margaretha', 'margaretha.handriani', 'margaretha.hendriani', 'margarethahandriani', 'margarethahendriani', 'margaretha.sd', 'margaretha.kepsek', 'kepsek.sd'].includes(term) || alphaNumericTerm.startsWith('margaretha')) {
-      const margaretha = this.data.users.find((u) => (u.username || '').toLowerCase() === 'margaretha.h' || (u.name || '').toLowerCase().includes('margaretha'));
-      if (margaretha) return margaretha;
-    }
-
-    // 4. Haliza / Tata Usaha Aliases
-    if (['haliza.tu', 'haliza.admin', 'haliza', 'tata.usaha', 'tatausaha', 'tu'].includes(term) || alphaNumericTerm === 'halizatu' || alphaNumericTerm === 'tatausaha') {
-      const haliza = this.data.users.find((u) => (u.username || '').toLowerCase() === 'haliza.tu' || (u.username || '').toLowerCase() === 'haliza.admin' || u.role === 'tata_usaha');
-      if (haliza) return haliza;
-    }
-
-    // 5. Exact or Cleaned Username match
-    const foundByUsername = this.data.users.find((u) => {
+    // 1. Exact username match (case-insensitive, stripped @)
+    const exactMatch = this.data.users.find((u) => {
       const uName = (u.username || '').trim().toLowerCase().replace(/^@+/, '');
-      if (!uName) return false;
-      if (uName === term) return true;
-      if (alphaNumericTerm && uName.replace(/[^a-z0-9]/g, '') === alphaNumericTerm) return true;
-      return false;
+      return uName === term;
     });
-    if (foundByUsername) return foundByUsername;
+    if (exactMatch) return exactMatch;
 
-    // 6. Student shortcode patterns (e.g. "7a001", "7a.001", "smp7a001", "siswa7a001" -> matches "siswa.smp7a.001")
-    const cleanStudentPattern = term.replace(/^(siswa[._]?)?(smp|sd)?/, '').replace(/[^a-z0-9]/g, '');
-    if (cleanStudentPattern.length >= 3) {
-      const foundStudent = this.data.users.find((u) => {
-        if (u.role !== 'siswa') return false;
-        const uPattern = (u.username || '').toLowerCase().replace(/^(siswa[._]?)?(smp|sd)?/, '').replace(/[^a-z0-9]/g, '');
-        return uPattern && uPattern === cleanStudentPattern;
-      });
-      if (foundStudent) return foundStudent;
+    // 2. Unique exact email match
+    if (term.includes('@')) {
+      const emailMatches = this.data.users.filter((u) => u.email && u.email.trim().toLowerCase() === term);
+      if (emailMatches.length === 1) return emailMatches[0];
     }
 
-    // 7. Full Name match or Name without dots/special characters
-    const foundByName = this.data.users.find((u) => {
-      const fullName = (u.name || '').trim().toLowerCase();
-      if (!fullName) return false;
-      if (fullName === term) return true;
-      const alphaFullName = fullName.replace(/[^a-z0-9]/g, '');
-      if (alphaNumericTerm && alphaFullName === alphaNumericTerm) return true;
-      if (term.length >= 4 && (fullName.includes(term) || term.includes(fullName))) return true;
-      return false;
-    });
-    if (foundByName) return foundByName;
-
-    // 8. Email match
-    const foundByEmail = this.data.users.find((u) => {
-      return u.email && u.email.trim().toLowerCase() === term;
-    });
-    if (foundByEmail) return foundByEmail;
-
-    // 9. Phone match
-    const cleanPhone = raw.replace(/[^0-9]/g, '');
-    if (cleanPhone.length >= 7) {
-      const foundByPhone = this.data.users.find((u) => {
-        if (!u.phone) return false;
-        const uPhone = u.phone.trim().replace(/[^0-9]/g, '');
-        return uPhone === cleanPhone || uPhone.endsWith(cleanPhone) || cleanPhone.endsWith(uPhone);
-      });
-      if (foundByPhone) return foundByPhone;
+    // 3. Explicit legacy alias shortcuts ONLY when unambiguous exact alias
+    if (term === 'operator' || term === 'dapodik' || term === 'operator.dapodik') {
+      return this.data.users.find((u) => (u.username || '').toLowerCase() === 'bambang.operator');
     }
-
-    // 10. NISN match
-    const foundByNisn = this.data.users.find((u) => {
-      return (u as any).nisn && String((u as any).nisn).trim() === raw;
-    });
-    if (foundByNisn) return foundByNisn;
+    if (term === 'kepsek.smp' || term === 'bambang.smp' || term === 'st.bambang') {
+      return this.data.users.find((u) => (u.username || '').toLowerCase() === 'bambang.kepsek');
+    }
+    if (term === 'kepsek.sd' || term === 'margaretha.sd' || term === 'margaretha.kepsek') {
+      return this.data.users.find((u) => (u.username || '').toLowerCase() === 'margaretha.h');
+    }
 
     return undefined;
   }
@@ -1342,7 +1772,22 @@ class DatabaseManager {
   }
 
   public getStaffUsers(): User[] {
-    return this.data.users.filter((u) => u.role !== 'siswa');
+    const deletedList = this.data.deletedUserIds || [];
+    return this.data.users
+      .filter((u) => u.role !== 'siswa')
+      .filter((u) => {
+        if (isDemoStudent(u)) return false;
+        const un = (u.username || '').trim().toLowerCase().replace(/^@+/, '');
+        if (deletedList.includes(u.id) || deletedList.includes(u.username) || deletedList.includes(un)) return false;
+        return true;
+      })
+      .map((u) => {
+        if (u.role === 'guru') {
+          u.isVerified = true;
+          u.badgeType = 'green';
+        }
+        return u;
+      });
   }
 
   public resetStaffPasswordToInitial(userId: string): { success: boolean; error?: string; initialPassword?: string } {
@@ -1352,66 +1797,71 @@ class DatabaseManager {
       return { success: false, error: 'Password Admin Utama terproteksi dan tidak dapat diubah.' };
     }
     const staffPreset = OFFICIAL_STAFF_LIST.find((s) => s.username.toLowerCase() === user.username.toLowerCase());
-    const initialPass = staffPreset ? staffPreset.initialPassword : (user.initialPassword || 'Tamvesta!1234');
-    const pass = hashPassword(initialPass);
+    const resetPass = staffPreset ? staffPreset.initialPassword : `Tamvesta!${Math.floor(1000 + Math.random() * 9000)}`;
+    const pass = hashPassword(resetPass);
     user.passwordHash = pass.hash;
     user.salt = pass.salt;
-    user.initialPassword = initialPass;
+    delete (user as any).password;
+    delete (user as any).initialPassword;
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     user.mustChangePassword = false;
     user.updatedAt = new Date().toISOString();
     this.save();
-    return { success: true, initialPassword: initialPass };
+    this.emitRealtimeEvent({
+      type: 'sync_update',
+      entity: 'users',
+      action: 'updated',
+      entityId: user.id,
+    });
+    return { success: true, initialPassword: resetPass };
   }
 
   public syncMultipleUsers(incomingUsers: User[]): { added: number; updated: number; users: User[] } {
     if (!Array.isArray(incomingUsers) || incomingUsers.length === 0) {
-      return { added: 0, updated: 0, users: this.data.users };
+      return { added: 0, updated: 0, users: this.getAllUsers() };
     }
+    const normalize = (v: string) => (v || '').trim().toLowerCase().replace(/^@+/, '');
+    const deletedSet = new Set((this.data.deletedUserIds || []).map(normalize));
     let added = 0;
     let updated = 0;
     incomingUsers.forEach((incoming) => {
       if (!incoming || !incoming.username) return;
-      const cleanUn = (incoming.username || '').trim().toLowerCase().replace(/^@+/, '');
+      const cleanUn = normalize(incoming.username);
+      const cleanId = normalize(incoming.id || '');
       if (OLD_DEMO_USERNAMES.includes(cleanUn) || incoming.id?.startsWith('user_siswa_siswa_') || (incoming.name || '').toLowerCase() === 'ahmad fauzi') return;
 
-      // Hapus dari deletedUserIds agar akun terdaftar admin tidak pernah diblokir
-      this.data.deletedUserIds = (this.data.deletedUserIds || []).filter(
-        (did) => did !== incoming.id && did.toLowerCase() !== cleanUn && did.toLowerCase() !== (incoming.username || '').toLowerCase()
-      );
+      // Jangan pernah mengembalikan akun yang sudah dihapus permanen
+      if (deletedSet.has(cleanUn) || (cleanId && deletedSet.has(cleanId))) return;
 
       const existing = this.data.users.find(
-        (u) => u.id === incoming.id || (u.username || '').trim().toLowerCase().replace(/^@+/, '') === cleanUn
+        (u) => u.id === incoming.id || normalize(u.username) === cleanUn
       );
       if (existing) {
-        Object.assign(existing, {
-          name: incoming.name || existing.name,
-          kelas: incoming.kelas || existing.kelas,
-          gender: incoming.gender || existing.gender,
-          initialPassword: incoming.initialPassword || existing.initialPassword,
-          password: incoming.password || existing.password || incoming.initialPassword,
-          mustChangePassword: false,
-          isActive: true,
-          updatedAt: new Date().toISOString(),
-        });
-        updated++;
+        const incomingTime = new Date(incoming.updatedAt || 0).getTime();
+        const existingTime = new Date(existing.updatedAt || 0).getTime();
+        if (incomingTime > existingTime) {
+          if (incoming.name) existing.name = incoming.name;
+          if (incoming.kelas) existing.kelas = incoming.kelas;
+          if (incoming.gender) existing.gender = incoming.gender;
+          existing.updatedAt = new Date().toISOString();
+          updated++;
+        }
       } else {
         const generatedPass = 'Siswa' + Math.floor(100000 + Math.random() * 900000);
         const resolvedPass = incoming.initialPassword || (incoming as any).password || generatedPass;
         const pass = hashPassword(resolvedPass);
         const newUser: User = {
-          ...incoming,
           id: incoming.id || ('stu_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6)),
           username: cleanUn,
           name: (incoming.name || 'Siswa').trim(),
           role: incoming.role || 'siswa',
           gender: incoming.gender || 'Laki-laki',
           kelas: incoming.kelas || 'Kelas 7',
-          initialPassword: resolvedPass,
-          password: incoming.password || resolvedPass,
           passwordHash: pass.hash,
           salt: pass.salt,
+          tokenVersion: 0,
           mustChangePassword: false,
-          isActive: true,
+          isActive: incoming.isActive !== undefined ? incoming.isActive : true,
           qrToken: generateQrToken(incoming.id || cleanUn, cleanUn),
           avatarUrl: incoming.avatarUrl || ('https://api.dicebear.com/7.x/initials/svg?seed=' + encodeURIComponent(incoming.name || cleanUn) + '&backgroundColor=0284c7'),
           createdAt: incoming.createdAt || new Date().toISOString(),
@@ -1421,8 +1871,8 @@ class DatabaseManager {
         added++;
       }
     });
-    this.save();
-    return { added, updated, users: this.data.users };
+    if (added > 0 || updated > 0) this.save();
+    return { added, updated, users: this.getAllUsers() };
   }
 
   public createStudent(userData: {
@@ -1431,21 +1881,27 @@ class DatabaseManager {
     password: string;
     gender?: 'Laki-laki' | 'Perempuan';
     kelas?: string;
+    nisn?: string;
+    phone?: string;
+    email?: string;
+    isActive?: boolean;
   }): { success: boolean; user?: User; error?: string } {
     const rawUsername = userData.username || '';
     const cleanUsername = rawUsername.trim().toLowerCase().replace(/^@+/, '');
-    if (!cleanUsername) {
-      return { success: false, error: 'Username wajib diisi.' };
+    if (!cleanUsername || cleanUsername.length < 3) {
+      return { success: false, error: 'Username minimal 3 karakter.' };
     }
     if (!userData.name || !userData.name.trim()) {
       return { success: false, error: 'Nama lengkap siswa wajib diisi.' };
     }
-    if (!userData.password || userData.password.length < 6) {
+    if (!userData.password || userData.password.trim().length < 6) {
       return { success: false, error: 'Password minimal 6 karakter demi keamanan akun.' };
     }
 
     // Check unique username
-    const exists = this.findUserByUsername(cleanUsername);
+    const exists = this.data.users.find(
+      (u) => (u.username || '').trim().toLowerCase().replace(/^@+/, '') === cleanUsername
+    );
     if (exists) {
       return { success: false, error: `Username "${cleanUsername}" sudah terdaftar. Gunakan username lain.` };
     }
@@ -1455,9 +1911,9 @@ class DatabaseManager {
     const pass = hashPassword(userData.password.trim());
     const qrToken = generateQrToken(id, cleanUsername);
 
-    // Hapus dari deletedUserIds jika username didaftarkan ulang
+    // Hapus dari deletedUserIds jika username didaftarkan ulang secara eksplisit oleh Admin
     this.data.deletedUserIds = (this.data.deletedUserIds || []).filter(
-      (did) => did !== id && did.toLowerCase() !== cleanUsername
+      (did) => did !== id && did.toLowerCase().replace(/^@+/, '') !== cleanUsername
     );
 
     const newUser: User = {
@@ -1467,12 +1923,15 @@ class DatabaseManager {
       role: 'siswa',
       gender: userData.gender || 'Laki-laki',
       kelas: userData.kelas?.trim() || 'Kelas 7',
-      initialPassword: userData.password.trim(),
-      password: userData.password.trim(),
+      nisn: userData.nisn?.trim() || undefined,
+      phone: userData.phone?.trim() || undefined,
+      email: userData.email?.trim() || undefined,
       passwordHash: pass.hash,
       salt: pass.salt,
-      mustChangePassword: false, // Siswa bisa login langsung selamanya dengan password dari admin
-      isActive: true,
+      tokenVersion: 0,
+      mustChangePassword: false,
+      isActive: userData.isActive !== undefined ? userData.isActive : true,
+      registrationStatus: 'approved',
       qrToken,
       avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(userData.name)}&backgroundColor=0284c7`,
       createdAt: now,
@@ -1485,6 +1944,14 @@ class DatabaseManager {
 
     this.data.users.push(newUser);
     this.save();
+    this.addActivityLog({
+      type: 'account_created',
+      title: 'Pembuatan Akun Siswa',
+      description: `Akun Siswa @${newUser.username} (${newUser.name} - ${newUser.kelas}) berhasil ditambahkan.`,
+      userId: newUser.id,
+      userName: newUser.name,
+      userRole: newUser.role,
+    });
     return { success: true, user: newUser };
   }
 
@@ -1529,7 +1996,7 @@ class DatabaseManager {
       (did) => did !== id && did.toLowerCase() !== cleanUsername
     );
 
-    const newUser: User = {
+      const newUser: User = {
       id,
       username: cleanUsername,
       name: userData.name.trim(),
@@ -1541,10 +2008,9 @@ class DatabaseManager {
       parentName: userData.parentName?.trim() || undefined,
       birthPlaceDate: userData.birthPlaceDate?.trim() || undefined,
       address: userData.address?.trim() || undefined,
-      initialPassword: userData.password.trim(),
-      password: userData.password.trim(),
       passwordHash: pass.hash,
       salt: pass.salt,
+      tokenVersion: 0,
       mustChangePassword: false,
       isActive: false, // Menunggu ACC dari admin/TU
       registrationStatus: 'pending',
@@ -1630,57 +2096,212 @@ class DatabaseManager {
     return { success: true, user };
   }
 
-  public updateStudent(id: string, data: { name?: string; gender?: 'Laki-laki' | 'Perempuan'; kelas?: string; username?: string; phone?: string; email?: string; bio?: string }): { success: boolean; user?: User; error?: string } {
+  public updateStudent(
+    id: string,
+    data: {
+      name?: string;
+      gender?: 'Laki-laki' | 'Perempuan';
+      kelas?: string;
+      username?: string;
+      phone?: string;
+      email?: string;
+      bio?: string;
+      isActive?: boolean;
+      role?: UserRole;
+      jabatan?: string;
+      password?: string;
+      expectedUpdatedAt?: string;
+    }
+  ): { success: boolean; user?: User; error?: string; conflict?: boolean } {
     const user = this.findUserById(id);
-    if (!user || user.role !== 'siswa') return { success: false, error: 'Data siswa tidak ditemukan.' };
+    if (!user) return { success: false, error: 'Data pengguna tidak ditemukan.' };
+
+    if (data.expectedUpdatedAt && user.updatedAt && data.expectedUpdatedAt !== user.updatedAt) {
+      return {
+        success: false,
+        conflict: true,
+        error: 'Data akun ini baru saja diperbarui oleh Admin lain. Silakan muat ulang data terbaru sebelum menyimpan.',
+      };
+    }
 
     if (data.username && data.username.trim().toLowerCase() !== user.username.toLowerCase()) {
-      const trimmed = data.username.trim();
-      const exists = this.findUserByUsername(trimmed);
-      if (exists && exists.id !== user.id) {
-        return { success: false, error: `Username "${trimmed}" sudah digunakan oleh akun lain.` };
+      const trimmed = data.username.trim().toLowerCase().replace(/^@+/, '');
+      if (trimmed.length < 3) {
+        return { success: false, error: 'Username minimal 3 karakter.' };
+      }
+      const exists = this.data.users.find(
+        (u) => u.id !== user.id && (u.username || '').trim().toLowerCase().replace(/^@+/, '') === trimmed
+      );
+      if (exists) {
+        return { success: false, conflict: true, error: `Username "${trimmed}" sudah digunakan oleh akun lain.` };
       }
       user.username = trimmed;
       user.qrToken = generateQrToken(user.id, trimmed);
     }
     if (data.name && data.name.trim()) user.name = data.name.trim();
     if (data.gender) user.gender = data.gender;
-    if (data.kelas) user.kelas = data.kelas.trim();
+    if (data.kelas !== undefined) user.kelas = data.kelas.trim();
     if (data.phone !== undefined) user.phone = data.phone.trim();
     if (data.email !== undefined) user.email = data.email.trim();
     if (data.bio !== undefined) user.bio = data.bio.trim();
+    if (data.jabatan !== undefined) user.jabatan = data.jabatan.trim();
+    if (data.role && user.username !== 'TAMANSISWA') {
+      user.role = data.role;
+      if (data.role === 'guru') {
+        user.isVerified = true;
+        user.badgeType = 'green';
+      }
+    }
+    if (data.isActive !== undefined && user.username !== 'TAMANSISWA') {
+      user.isActive = Boolean(data.isActive);
+      if (!user.isActive) {
+        user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+      }
+    }
+    if (data.password && data.password.trim().length >= 6) {
+      const hashed = hashPassword(data.password.trim());
+      user.passwordHash = hashed.hash;
+      user.salt = hashed.salt;
+      delete (user as any).password;
+      delete (user as any).initialPassword;
+      user.passwordChanged = true;
+      user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+    }
     user.updatedAt = new Date().toISOString();
     this.save();
     return { success: true, user };
   }
 
-  public toggleUserActive(userId: string): { success: boolean; isActive?: boolean; error?: string } {
+  public createUserByAdmin(data: {
+    name: string;
+    username: string;
+    password: string;
+    role?: UserRole;
+    gender?: 'Laki-laki' | 'Perempuan';
+    kelas?: string;
+    jabatan?: string;
+    email?: string;
+    phone?: string;
+    isActive?: boolean;
+  }): { success: boolean; user?: User; error?: string } {
+    const cleanUsername = (data.username || '').trim().toLowerCase().replace(/^@+/, '');
+    if (!cleanUsername || cleanUsername.length < 3) {
+      return { success: false, error: 'Username minimal 3 karakter.' };
+    }
+    if (!data.name || !data.name.trim()) {
+      return { success: false, error: 'Nama lengkap wajib diisi.' };
+    }
+    if (!data.password || data.password.trim().length < 6) {
+      return { success: false, error: 'Password minimal 6 karakter.' };
+    }
+    const role: UserRole = data.role || 'siswa';
+    if (role === 'siswa') {
+      return this.createStudent({
+        name: data.name,
+        username: cleanUsername,
+        password: data.password,
+        gender: data.gender,
+        kelas: data.kelas,
+        phone: data.phone,
+        email: data.email,
+        isActive: data.isActive,
+      });
+    }
+    const exists = this.data.users.find(
+      (u) => (u.username || '').trim().toLowerCase().replace(/^@+/, '') === cleanUsername
+    );
+    if (exists) {
+      return { success: false, error: `Username "@${cleanUsername}" sudah digunakan.` };
+    }
+    const now = new Date().toISOString();
+    const id = `user_${role}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const pass = hashPassword(data.password.trim());
+    this.data.deletedUserIds = (this.data.deletedUserIds || []).filter(
+      (did) => did !== id && did.toLowerCase().replace(/^@+/, '') !== cleanUsername
+    );
+    const newUser: User = {
+      id,
+      username: cleanUsername,
+      name: data.name.trim(),
+      role,
+      gender: data.gender,
+      kelas: data.kelas?.trim() || undefined,
+      jabatan: data.jabatan?.trim() || role.toUpperCase(),
+      passwordHash: pass.hash,
+      salt: pass.salt,
+      tokenVersion: 0,
+      mustChangePassword: false,
+      isActive: data.isActive !== undefined ? data.isActive : true,
+      isVerified: role === 'guru' ? true : undefined,
+      badgeType: role === 'guru' ? 'green' : undefined,
+      email: data.email?.trim() || undefined,
+      phone: data.phone?.trim() || undefined,
+      qrToken: generateQrToken(id, cleanUsername),
+      avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(data.name.trim())}&backgroundColor=059669`,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.data.users.unshift(newUser);
+    this.save();
+    this.addActivityLog({
+      type: 'account_created',
+      title: `Pembuatan Akun ${role.toUpperCase()}`,
+      description: `Akun ${role.toUpperCase()} @${newUser.username} (${newUser.name}) berhasil dibuat oleh Admin.`,
+      userId: newUser.id,
+      userName: newUser.name,
+      userRole: newUser.role,
+    });
+    return { success: true, user: newUser };
+  }
+
+  public toggleUserActive(userId: string): { success: boolean; user?: User; isActive?: boolean; error?: string } {
     const user = this.findUserById(userId);
     if (!user) return { success: false, error: 'Pengguna tidak ditemukan.' };
     if (user.username === 'TAMANSISWA') {
       return { success: false, error: 'Akun Admin Utama TAMANSISWA tidak dapat dinonaktifkan.' };
     }
     user.isActive = !user.isActive;
+    if (!user.isActive) {
+      user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+      if (Array.isArray(this.data.deviceSessions)) {
+        this.data.deviceSessions = this.data.deviceSessions.filter((s) => {
+          if (s.userId === user.id) {
+            this.recordTombstone('deletedDeviceIds', s.id);
+            return false;
+          }
+          return true;
+        });
+      }
+      this.emitRealtimeEvent({
+        type: 'session_revoked',
+        entity: 'users',
+        action: 'status_changed',
+        entityId: user.id,
+        targetUserId: user.id,
+        payload: { reason: 'Akun dinonaktifkan oleh Administrator.' },
+      });
+    }
     user.updatedAt = new Date().toISOString();
     this.save();
-    return { success: true, isActive: user.isActive };
+    return { success: true, user, isActive: user.isActive };
   }
 
   public resetUserPassword(userId: string, newPassword: string): { success: boolean; error?: string } {
     const user = this.findUserById(userId);
     if (!user) return { success: false, error: 'Pengguna tidak ditemukan.' };
-    if (user.role === 'admin' || user.username === 'TAMANSISWA') {
+    if (user.username === 'TAMANSISWA') {
       return { success: false, error: 'Password Admin Utama TAMANSISWA dilindungi dan tidak dapat diubah.' };
     }
-    if (!newPassword || newPassword.length < 6) {
+    if (!newPassword || newPassword.trim().length < 6) {
       return { success: false, error: 'Password baru minimal 6 karakter.' };
     }
     const cleanPass = newPassword.trim();
     const hashed = hashPassword(cleanPass);
     user.passwordHash = hashed.hash;
     user.salt = hashed.salt;
-    user.initialPassword = cleanPass;
-    user.password = cleanPass;
+    delete (user as any).password;
+    delete (user as any).initialPassword;
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     (user as any).passwordChanged = true;
     user.mustChangePassword = false;
     user.updatedAt = new Date().toISOString();
@@ -1691,21 +2312,22 @@ class DatabaseManager {
   public changePassword(userId: string, oldPassword: string, newPassword: string): { success: boolean; error?: string } {
     const user = this.findUserById(userId);
     if (!user) return { success: false, error: 'Pengguna tidak ditemukan.' };
-    if (user.role === 'admin' || user.username === 'TAMANSISWA') {
-      return { success: false, error: 'Password Administrator berstatus tetap dan tidak dapat diubah.' };
+    if (user.username === 'TAMANSISWA') {
+      return { success: false, error: 'Password Administrator Utama berstatus tetap dan tidak dapat diubah.' };
     }
-    if (!verifyPassword(oldPassword, user.passwordHash, user.salt, user.initialPassword)) {
+    if (!verifyPassword(oldPassword, user.passwordHash, user.salt)) {
       return { success: false, error: 'Password lama tidak sesuai.' };
     }
-    if (newPassword.length < 6) {
+    if (newPassword.trim().length < 6) {
       return { success: false, error: 'Password baru minimal 6 karakter.' };
     }
 
     const hashed = hashPassword(newPassword.trim());
     user.passwordHash = hashed.hash;
     user.salt = hashed.salt;
-    user.password = newPassword.trim();
-    user.initialPassword = newPassword.trim();
+    delete (user as any).password;
+    delete (user as any).initialPassword;
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     (user as any).passwordChanged = true;
     user.mustChangePassword = false;
     user.updatedAt = new Date().toISOString();
@@ -1790,7 +2412,7 @@ class DatabaseManager {
       return { success: false, error: 'Anda sudah memiliki pengajuan ganti sandi yang sedang menunggu persetujuan Admin.' };
     }
 
-    const hashed = hashPassword(newPassword);
+    const hashed = hashPassword(newPassword.trim());
     const ticketNum = `TKT-${Math.floor(100000 + Math.random() * 900000)}`;
     const newReq: PasswordResetRequest = {
       id: `pr_${Date.now()}`,
@@ -1804,7 +2426,6 @@ class DatabaseManager {
       status: 'pending',
       newPasswordHash: hashed.hash,
       newSalt: hashed.salt,
-      newPassword: newPassword,
       createdAt: new Date().toISOString(),
     };
 
@@ -1848,23 +2469,21 @@ class DatabaseManager {
     req.adminNote = adminNote || (effectiveStatus === 'approved' ? 'ACC' : 'Ditolak');
 
     if (effectiveStatus === 'approved') {
-      if (req.newPassword) {
-        const hashed = hashPassword(req.newPassword);
-        user.passwordHash = req.newPasswordHash || hashed.hash;
-        user.salt = req.newSalt || hashed.salt;
-        user.password = req.newPassword;
-        user.initialPassword = req.newPassword;
-        user.passwordChanged = true;
-        user.mustChangePassword = false;
-        user.updatedAt = new Date().toISOString();
-      } else if (req.newPasswordHash && req.newSalt) {
+      if (req.newPasswordHash && req.newSalt) {
         user.passwordHash = req.newPasswordHash;
         user.salt = req.newSalt;
-        user.password = req.newPassword || user.password;
-        user.initialPassword = req.newPassword || user.initialPassword;
-        user.mustChangePassword = false;
-        user.updatedAt = new Date().toISOString();
+      } else if (req.newPassword) {
+        const hashed = hashPassword(req.newPassword);
+        user.passwordHash = hashed.hash;
+        user.salt = hashed.salt;
       }
+      delete (user as any).password;
+      delete (user as any).initialPassword;
+      delete (req as any).newPassword;
+      user.passwordChanged = true;
+      user.tokenVersion = (user.tokenVersion ?? 0) + 1;
+      user.mustChangePassword = false;
+      user.updatedAt = new Date().toISOString();
       // Send notification to student
       this.addNotification({
         title: 'Pengajuan Ganti Sandi di-ACC',
@@ -1873,6 +2492,7 @@ class DatabaseManager {
         targetUserId: user.id,
       });
     } else {
+      delete (req as any).newPassword;
       // Send rejection notification to student
       this.addNotification({
         title: 'Pengajuan Ganti Sandi Ditolak',
@@ -1922,12 +2542,14 @@ class DatabaseManager {
 
   public deleteSubject(id: string): boolean {
     const initialLen = this.data.subjects.length;
+    const existed = this.data.subjects.some((s) => s.id === id) || (this.data.deletedSubjectIds || []).includes(id);
+    if (!existed) return false;
+    this.recordTombstone('deletedSubjectIds', id);
     this.data.subjects = this.data.subjects.filter((s) => s.id !== id);
     if (this.data.subjects.length !== initialLen) {
       this.save();
-      return true;
     }
-    return false;
+    return true;
   }
 
   // --- Digital Books ---
@@ -1963,6 +2585,7 @@ class DatabaseManager {
 
   public deleteBook(id: string): boolean {
     const initialLen = this.data.books.length;
+    this.recordTombstone('deletedBookIds', id);
     this.data.books = this.data.books.filter((b) => b.id !== id);
     if (this.data.books.length !== initialLen) {
       this.save();
@@ -2009,12 +2632,14 @@ class DatabaseManager {
 
   public deleteAnnouncement(id: string): boolean {
     const initialLen = this.data.announcements.length;
+    const existed = this.data.announcements.some((a) => a.id === id) || (this.data.deletedAnnouncementIds || []).includes(id);
+    if (!existed) return false;
+    this.recordTombstone('deletedAnnouncementIds', id);
     this.data.announcements = this.data.announcements.filter((a) => a.id !== id);
     if (this.data.announcements.length !== initialLen) {
       this.save();
-      return true;
     }
-    return false;
+    return true;
   }
 
   // --- Quizzes & Tokens ---
@@ -2375,13 +3000,11 @@ class DatabaseManager {
   }
 
   public deleteAttendanceEvent(id: string): boolean {
+    this.recordTombstone('deletedEventIds', id);
     const initialLen = this.data.attendanceEvents.length;
     this.data.attendanceEvents = this.data.attendanceEvents.filter((e) => e.id !== id);
-    if (this.data.attendanceEvents.length !== initialLen) {
-      this.save();
-      return true;
-    }
-    return false;
+    this.save();
+    return this.data.attendanceEvents.length !== initialLen || true;
   }
 
   // --- Attendance Records & Scan Verification ---
@@ -2828,12 +3451,13 @@ class DatabaseManager {
   deleteStory(storyId: string, userId: string, isAdmin = false): boolean {
     if (!Array.isArray(this.data.stories)) return false;
     const index = this.data.stories.findIndex((s) => s.id === storyId);
-    if (index === -1) return false;
-
+    if (index === -1) {
+      return (this.data.deletedStoryIds || []).includes(storyId);
+    }
     const story = this.data.stories[index];
     if (story.authorId !== userId && !isAdmin) return false;
-
     this.data.stories.splice(index, 1);
+    this.recordTombstone('deletedStoryIds', storyId);
     this.save();
     return true;
   }
@@ -2895,8 +3519,8 @@ class DatabaseManager {
     if (!Array.isArray(this.data.notes)) return false;
     const index = this.data.notes.findIndex((n) => n.id === noteId && n.userId === userId);
     if (index === -1) return false;
-
     this.data.notes.splice(index, 1);
+    this.recordTombstone('deletedNoteIds', noteId);
     this.save();
     return true;
   }
@@ -2904,13 +3528,14 @@ class DatabaseManager {
   // -------------------------------------------------------------
   // NOTIFICATIONS
   // -------------------------------------------------------------
-  getNotifications(userId: string, role?: UserRole, userClass?: string): (AppNotification & { isRead: boolean })[] {
+  getNotifications(userId: string, role?: UserRole, userClass?: string, deviceId?: string): (AppNotification & { isRead: boolean })[] {
     if (!Array.isArray(this.data.notifications)) {
       this.data.notifications = [];
     }
 
-    // Seed default notifications if empty
-    if (this.data.notifications.length === 0) {
+    // Seed default notifications if empty — HANYA sekali jika belum pernah diisi & tidak ada tombstone
+    if (this.data.notifications.length === 0 && !this.data.hasSeededDefaultNotifications && (this.data.deletedNotificationIds || []).length === 0) {
+      this.data.hasSeededDefaultNotifications = true;
       const now = new Date().toISOString();
       this.data.notifications = [
         {
@@ -2948,19 +3573,37 @@ class DatabaseManager {
           createdAt: new Date(Date.now() - 7200000).toISOString(),
         },
       ];
+      this.data.hasSeededDefaultNotifications = true;
       this.save();
     }
 
+    const delNotifSet = new Set(this.data.deletedNotificationIds || []);
+    const seenKeys = new Set<string>();
+
     return this.data.notifications
       .filter((n) => {
-        // Exclude if user deleted it
+        if (!n || delNotifSet.has(n.id)) return false;
+        // Exclude if user deleted it personally
         if (Array.isArray(n.deletedBy) && n.deletedBy.includes(userId)) return false;
-        // Filter by user target
+        // Filter strict by targetUserId
         if (n.targetUserId && n.targetUserId !== userId) return false;
-        // Filter by role target
-        if (n.targetRole && role && n.targetRole !== role) return false;
+        // Filter strict by targetRole (non-admin MUST NEVER receive admin-only notifications)
+        if (n.targetRole && n.targetRole !== role) return false;
+        if (Array.isArray(n.targetRoles) && n.targetRoles.length > 0 && (!role || !n.targetRoles.includes(role))) {
+          return false;
+        }
+        // Admin-specific multi-device exclusion: exclude only the exact originating device/actor for "Admin lain" alerts
+        if (n.type === 'admin_account_event') {
+          if (role !== 'admin') return false;
+          if (deviceId && n.excludeDeviceId && deviceId === n.excludeDeviceId) return false;
+          if (!deviceId && n.excludeUserId && userId === n.excludeUserId) return false;
+        }
         // Filter by class target
         if (n.targetClass && userClass && n.targetClass !== userClass) return false;
+        // Deduplicate by dedupeKey/id
+        const key = n.dedupeKey || n.id;
+        if (seenKeys.has(key)) return false;
+        seenKeys.add(key);
         return true;
       })
       .map((n) => ({
@@ -3020,10 +3663,25 @@ class DatabaseManager {
     linkType?: AppNotification['linkType'];
     linkId?: string;
     targetRole?: UserRole;
+    targetRoles?: UserRole[];
     targetClass?: string;
     targetUserId?: string;
+    excludeUserId?: string;
+    excludeDeviceId?: string;
+    dedupeKey?: string;
+    actorId?: string;
+    actorName?: string;
+    statusLabel?: string;
+    metadata?: Record<string, any>;
   }): AppNotification {
     if (!Array.isArray(this.data.notifications)) this.data.notifications = [];
+
+    if (data.dedupeKey) {
+      const existing = this.data.notifications.find((n) => n.dedupeKey === data.dedupeKey);
+      if (existing) {
+        return existing;
+      }
+    }
 
     const newNotif: AppNotification = {
       id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -3034,8 +3692,16 @@ class DatabaseManager {
       linkType: data.linkType || 'none',
       linkId: data.linkId,
       targetRole: data.targetRole,
+      targetRoles: data.targetRoles,
       targetClass: data.targetClass,
       targetUserId: data.targetUserId,
+      excludeUserId: data.excludeUserId,
+      excludeDeviceId: data.excludeDeviceId,
+      dedupeKey: data.dedupeKey,
+      actorId: data.actorId,
+      actorName: data.actorName,
+      statusLabel: data.statusLabel,
+      metadata: data.metadata,
       readBy: [],
       deletedBy: [],
       createdAt: new Date().toISOString(),
@@ -3050,6 +3716,89 @@ class DatabaseManager {
     return this.createNotification(data);
   }
 
+  public notifyAdminsAccountActivity(opts: {
+    action: 'created' | 'updated' | 'deleted' | 'status_changed';
+    targetUser: Pick<User, 'id' | 'name' | 'username' | 'role' | 'kelas' | 'isActive'>;
+    actor?: User | null;
+    actorDeviceId?: string;
+    detail?: string;
+  }): AppNotification {
+    const actorName = opts.actor?.name || 'Administrator';
+    const roleMap: Record<string, string> = {
+      admin: 'Admin',
+      guru: 'Guru',
+      siswa: 'Siswa',
+      tata_usaha: 'Tata Usaha',
+      kepala_sekolah: 'Kepala Sekolah',
+      satpam: 'Satpam',
+      panitia: 'Panitia',
+      support: 'Support',
+    };
+    const roleLabel = roleMap[opts.targetUser.role] || opts.targetUser.role;
+
+    let title = 'AKUN BARU DITAMBAHKAN';
+    let message = `Admin lain (${actorName}) telah menambahkan akun baru ke sistem TAMVESTA: ${opts.targetUser.name} (@${opts.targetUser.username} • Role: ${roleLabel}).`;
+    let statusLabel = 'Status: Berhasil ditambahkan.';
+
+    if (opts.action === 'updated') {
+      title = 'AKUN PENGGUNA DIPERBARUI';
+      message = `Admin lain (${actorName}) memperbarui data akun ${opts.targetUser.name} (@${opts.targetUser.username} • ${roleLabel}).`;
+      statusLabel = opts.detail || 'Status: Perubahan disimpan.';
+    } else if (opts.action === 'status_changed') {
+      title = opts.targetUser.isActive ? 'AKUN DIAKTIFKAN KEMBALI' : 'AKUN DINONAKTIFKAN';
+      message = `Admin lain (${actorName}) ${opts.targetUser.isActive ? 'mengaktifkan' : 'menonaktifkan'} akun ${opts.targetUser.name} (@${opts.targetUser.username}).`;
+      statusLabel = opts.targetUser.isActive ? 'Status: Aktif.' : 'Status: Dinonaktifkan & akses login dicabut.';
+    } else if (opts.action === 'deleted') {
+      title = 'AKUN DIHAPUS PERMANEN';
+      message = `Admin lain (${actorName}) telah menghapus permanen akun ${opts.targetUser.name} (@${opts.targetUser.username} • ${roleLabel}) dari database TAMVESTA.`;
+      statusLabel = 'Status: Dihapus permanen.';
+    }
+
+    // Dedupe window ensures retried calls never emit duplicates
+    const bucket = opts.action === 'created' ? 'created_once' : `${opts.action}_${Math.floor(Date.now() / 3000)}`;
+    const dedupeKey = `admin_acct:${opts.action}:${opts.targetUser.id}:${bucket}`;
+
+    const isAlreadyCreated = Array.isArray(this.data.notifications) && this.data.notifications.some((n) => n.dedupeKey === dedupeKey);
+    const notif = this.createNotification({
+      title,
+      message,
+      type: 'admin_account_event',
+      isImportant: true,
+      linkType: opts.targetUser.role === 'siswa' ? 'students' : 'staff',
+      linkId: opts.targetUser.id,
+      targetRole: 'admin',
+      targetRoles: ['admin'],
+      excludeUserId: opts.actor?.id,
+      excludeDeviceId: opts.actorDeviceId,
+      dedupeKey,
+      actorId: opts.actor?.id,
+      actorName,
+      statusLabel,
+      metadata: {
+        action: opts.action,
+        targetUserId: opts.targetUser.id,
+        targetUsername: opts.targetUser.username,
+        targetName: opts.targetUser.name,
+        targetRole: opts.targetUser.role,
+      },
+    });
+
+    if (!isAlreadyCreated) {
+      this.emitRealtimeEvent({
+        type: 'admin_notification',
+        entity: 'users',
+        action: 'notification',
+        entityId: opts.targetUser.id,
+        targetRoles: ['admin'],
+        excludeUserId: opts.actor?.id,
+        excludeDeviceId: opts.actorDeviceId,
+        notification: notif,
+      });
+    }
+
+    return notif;
+  }
+
   public getAllNotificationsRaw(): AppNotification[] {
     if (!Array.isArray(this.data.notifications)) this.data.notifications = [];
     return [...this.data.notifications].sort(
@@ -3059,12 +3808,14 @@ class DatabaseManager {
 
   public deleteNotificationAdmin(notificationId: string): boolean {
     if (!Array.isArray(this.data.notifications)) return false;
+    this.recordTombstone('deletedNotificationIds', notificationId);
     const initialLen = this.data.notifications.length;
     this.data.notifications = this.data.notifications.filter((n) => n.id !== notificationId);
     if (this.data.notifications.length !== initialLen) {
       this.save();
       return true;
     }
+    this.save();
     return false;
   }
 
@@ -3131,6 +3882,7 @@ class DatabaseManager {
 
   deleteArticle(id: string): boolean {
     if (!Array.isArray(this.data.articles)) return false;
+    this.recordTombstone('deletedArticleIds', id);
     this.data.articles = this.data.articles.filter((a) => a.id !== id);
     this.save();
     return true;
@@ -3209,6 +3961,7 @@ class DatabaseManager {
 
   deleteTuitionBill(id: string): boolean {
     if (!Array.isArray(this.data.tuitionBills)) return false;
+    this.recordTombstone('deletedBillIds', id);
     this.data.tuitionBills = this.data.tuitionBills.filter((b) => b.id !== id);
     this.save();
     return true;
@@ -3271,6 +4024,7 @@ class DatabaseManager {
 
   deleteTuDocument(id: string): boolean {
     if (!Array.isArray(this.data.tuDocuments)) return false;
+    this.recordTombstone('deletedDocumentIds', id);
     this.data.tuDocuments = this.data.tuDocuments.filter((d) => d.id !== id);
     this.save();
     return true;
@@ -3308,90 +4062,284 @@ class DatabaseManager {
   // MANAJEMEN PENGGUNA (GURU, ALUMNI & CENTANG BIRU)
   // -------------------------------------------------------------
   createTeacherAccount(data: { name: string; username: string; password?: string; jabatan?: string; email?: string; phone?: string }): User {
-    const existing = this.data.users.find((u) => u.username.toLowerCase() === data.username.toLowerCase());
+    const cleanUsername = (data.username || '').trim().toLowerCase().replace(/^@+/, '');
+    if (!cleanUsername || cleanUsername.length < 3) {
+      throw new Error('Username guru minimal 3 karakter.');
+    }
+    const existing = this.data.users.find(
+      (u) => (u.username || '').trim().toLowerCase().replace(/^@+/, '') === cleanUsername
+    );
     if (existing) throw new Error('Username guru sudah digunakan.');
 
-    const initialPassword = data.password?.trim() || ('Tamvesta!G' + Math.floor(1000 + Math.random() * 9000));
-    const pass = hashPassword(initialPassword);
+    const rawPassword = data.password?.trim() || ('Tamvesta!G' + Math.floor(1000 + Math.random() * 9000));
+    if (rawPassword.length < 6) {
+      throw new Error('Password minimal 6 karakter.');
+    }
+    const pass = hashPassword(rawPassword);
+    const id = `user_teacher_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    this.data.deletedUserIds = (this.data.deletedUserIds || []).filter(
+      (did) => did !== id && did.toLowerCase().replace(/^@+/, '') !== cleanUsername
+    );
+
     const newTeacher: User = {
-      id: `user_teacher_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      username: data.username.trim().toLowerCase(),
+      id,
+      username: cleanUsername,
       name: data.name.trim(),
       role: 'guru',
-      jabatan: data.jabatan || 'Guru Mata Pelajaran',
-      initialPassword,
-      password: initialPassword,
+      jabatan: data.jabatan?.trim() || 'Guru Mata Pelajaran',
       passwordHash: pass.hash,
       salt: pass.salt,
+      tokenVersion: 0,
       mustChangePassword: false,
       isActive: true,
       isVerified: true, // Guru otomatis terverifikasi permanen
       badgeType: 'green', // Centang hijau resmi untuk Guru
-      email: data.email,
-      phone: data.phone,
-      qrToken: generateQrToken(data.username, data.name),
+      email: data.email?.trim() || undefined,
+      phone: data.phone?.trim() || undefined,
+      qrToken: generateQrToken(id, cleanUsername),
+      avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(data.name.trim())}&backgroundColor=059669`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
     this.data.users.unshift(newTeacher);
     this.save();
+    this.addActivityLog({
+      type: 'account_created',
+      title: 'Pembuatan Akun Guru',
+      description: `Akun Guru @${newTeacher.username} (${newTeacher.name}) berhasil dibuat.`,
+      userId: newTeacher.id,
+      userName: newTeacher.name,
+      userRole: newTeacher.role,
+    });
     return newTeacher;
   }
 
-  updateTeacherAccount(id: string, data: Partial<User>): User {
+  updateTeacherAccount(id: string, data: Partial<User> & { password?: string; expectedUpdatedAt?: string }): User {
     const teacher = this.data.users.find((u) => u.id === id);
-    if (!teacher) throw new Error('Akun guru tidak ditemukan.');
+    if (!teacher) throw new Error('Akun tidak ditemukan.');
+    if (data.expectedUpdatedAt && teacher.updatedAt && data.expectedUpdatedAt !== teacher.updatedAt) {
+      throw new Error('Data akun ini telah diperbarui oleh Admin lain. Silakan muat ulang.');
+    }
+    if (data.username && data.username.trim().toLowerCase() !== teacher.username.toLowerCase()) {
+      const cleanU = data.username.trim().toLowerCase().replace(/^@+/, '');
+      const dup = this.data.users.find((u) => u.id !== id && u.username.toLowerCase() === cleanU);
+      if (dup) throw new Error(`Username @${cleanU} sudah digunakan akun lain.`);
+      teacher.username = cleanU;
+      teacher.qrToken = generateQrToken(teacher.id, cleanU);
+    }
     if (data.name) teacher.name = data.name.trim();
-    if (data.jabatan) teacher.jabatan = data.jabatan.trim();
+    if (data.jabatan !== undefined) teacher.jabatan = data.jabatan.trim();
     if (data.email !== undefined) teacher.email = data.email;
     if (data.phone !== undefined) teacher.phone = data.phone;
-    if (data.isActive !== undefined) teacher.isActive = data.isActive;
-    if (data.isVerified !== undefined) teacher.isVerified = data.isVerified;
+    if (data.role && teacher.username !== 'TAMANSISWA') {
+      teacher.role = data.role;
+      if (data.role === 'guru') {
+        teacher.isVerified = true;
+        teacher.badgeType = 'green';
+      }
+    }
+    if (data.isActive !== undefined && teacher.username !== 'TAMANSISWA') {
+      teacher.isActive = data.isActive;
+      if (!teacher.isActive) {
+        teacher.tokenVersion = (teacher.tokenVersion ?? 0) + 1;
+      }
+    }
+    if (data.password && data.password.trim().length >= 6) {
+      const pass = hashPassword(data.password.trim());
+      teacher.passwordHash = pass.hash;
+      teacher.salt = pass.salt;
+      delete (teacher as any).password;
+      delete (teacher as any).initialPassword;
+      teacher.tokenVersion = (teacher.tokenVersion ?? 0) + 1;
+    }
+    if (data.isVerified !== undefined && teacher.role !== 'guru') teacher.isVerified = data.isVerified;
     teacher.updatedAt = new Date().toISOString();
     this.save();
     return teacher;
   }
 
-  deleteStudentAccount(id: string): boolean {
-    const idx = this.data.users.findIndex((u) => u.id === id);
-    if (idx === -1) return false;
+  private permanentlyRemoveUserAndRelations(id: string): { deleted: boolean; removedUser?: User } {
+    const cleanTarget = (id || '').trim().toLowerCase().replace(/^@+/, '');
+    const idx = this.data.users.findIndex(
+      (u) => u.id === id || (u.username || '').trim().toLowerCase().replace(/^@+/, '') === cleanTarget
+    );
+    if (idx === -1) {
+      const alreadyDeleted = (this.data.deletedUserIds || []).some(
+        (d) => d === id || d.toLowerCase().replace(/^@+/, '') === cleanTarget
+      );
+      return { deleted: alreadyDeleted };
+    }
     const removedUser = this.data.users[idx];
+    if (removedUser.username === 'TAMANSISWA') {
+      throw new Error('Akun Administrator Utama TAMANSISWA tidak dapat dihapus.');
+    }
     this.data.users.splice(idx, 1);
-    this.data.deletedUserIds = this.data.deletedUserIds || [];
-    if (!this.data.deletedUserIds.includes(id)) {
-      this.data.deletedUserIds.push(id);
+    this.recordTombstone('deletedUserIds', id);
+    if (removedUser.id) this.recordTombstone('deletedUserIds', removedUser.id);
+    if (removedUser.username) {
+      this.recordTombstone('deletedUserIds', removedUser.username.toLowerCase());
+      this.recordTombstone('deletedUserIds', removedUser.username.trim().toLowerCase().replace(/^@+/, ''));
     }
-    if (removedUser.username && !this.data.deletedUserIds.includes(removedUser.username.toLowerCase())) {
-      this.data.deletedUserIds.push(removedUser.username.toLowerCase());
+
+    // Revoke active device sessions for deleted account
+    if (Array.isArray(this.data.deviceSessions)) {
+      this.data.deviceSessions = this.data.deviceSessions.filter((s) => {
+        if (s.userId === id || s.userId === removedUser.id) {
+          this.recordTombstone('deletedDeviceIds', s.id);
+          return false;
+        }
+        return true;
+      });
     }
+
+    // Clean orphaned password reset requests, user notes, and homeroom teacher link
+    if (Array.isArray(this.data.passwordResetRequests)) {
+      this.data.passwordResetRequests = this.data.passwordResetRequests.filter(
+        (r) => r.userId !== removedUser.id && (r.username || '').toLowerCase() !== (removedUser.username || '').toLowerCase()
+      );
+    }
+    if (Array.isArray(this.data.studentNotes)) {
+      this.data.studentNotes = this.data.studentNotes.filter((n) => n.userId !== removedUser.id);
+    }
+    if (Array.isArray(this.data.notes)) {
+      this.data.notes = this.data.notes.filter((n) => {
+        if (n.userId === removedUser.id) {
+          this.recordTombstone('deletedNoteIds', n.id);
+          return false;
+        }
+        return true;
+      });
+    }
+    if (Array.isArray(this.data.schoolClasses)) {
+      this.data.schoolClasses.forEach((cls) => {
+        if (cls.homeroomTeacherId === removedUser.id) {
+          cls.homeroomTeacherId = undefined;
+          cls.homeroomTeacherName = undefined;
+        }
+      });
+    }
+
+    this.addActivityLog({
+      type: 'account_deleted',
+      title: 'Penghapusan Akun Permanen',
+      description: `Akun ${removedUser.role.toUpperCase()} @${removedUser.username} (${removedUser.name}) telah dihapus secara permanen dari database.`,
+      userId: removedUser.id,
+      userName: removedUser.name,
+      userRole: removedUser.role,
+    });
+
     this.save();
-    return true;
+
+    this.emitRealtimeEvent({
+      type: 'session_revoked',
+      entity: 'users',
+      action: 'deleted',
+      entityId: removedUser.id,
+      targetUserId: removedUser.id,
+      payload: { reason: 'Akun Anda telah dihapus permanen oleh Administrator.' },
+    });
+
+    return { deleted: true, removedUser };
+  }
+
+  deleteUserAccount(id: string): { deleted: boolean; removedUser?: User } {
+    return this.permanentlyRemoveUserAndRelations(id);
+  }
+
+  deleteStudentAccount(id: string): boolean {
+    return this.permanentlyRemoveUserAndRelations(id).deleted;
   }
 
   deleteTeacherAccount(id: string): boolean {
-    const idx = this.data.users.findIndex((u) => u.id === id);
-    if (idx === -1) return false;
-    const removedUser = this.data.users[idx];
-    this.data.users.splice(idx, 1);
-    this.data.deletedUserIds = this.data.deletedUserIds || [];
-    if (!this.data.deletedUserIds.includes(id)) {
-      this.data.deletedUserIds.push(id);
-    }
-    if (removedUser.username && !this.data.deletedUserIds.includes(removedUser.username.toLowerCase())) {
-      this.data.deletedUserIds.push(removedUser.username.toLowerCase());
-    }
-    this.save();
-    return true;
+    return this.permanentlyRemoveUserAndRelations(id).deleted;
   }
 
   getDeletedUserIds(): string[] {
     return Array.isArray(this.data.deletedUserIds) ? this.data.deletedUserIds : [];
   }
 
-  toggleVerifiedBadge(userId: string): { isVerified: boolean } {
+  getDeletedPostIds(): string[] {
+    return Array.isArray(this.data.deletedPostIds) ? this.data.deletedPostIds : [];
+  }
+
+  getDeletedStoryIds(): string[] {
+    return Array.isArray(this.data.deletedStoryIds) ? this.data.deletedStoryIds : [];
+  }
+
+  getDeletedSubjectIds(): string[] {
+    return Array.isArray(this.data.deletedSubjectIds) ? this.data.deletedSubjectIds : [];
+  }
+
+  getDeletedAnnouncementIds(): string[] {
+    return Array.isArray(this.data.deletedAnnouncementIds) ? this.data.deletedAnnouncementIds : [];
+  }
+
+  getDeletedScheduleIds(): string[] {
+    return Array.isArray(this.data.deletedScheduleIds) ? this.data.deletedScheduleIds : [];
+  }
+
+  getDeletedClassIds(): string[] {
+    return Array.isArray(this.data.deletedClassIds) ? this.data.deletedClassIds : [];
+  }
+
+  getDeletedDeviceIds(): string[] {
+    return Array.isArray(this.data.deletedDeviceIds) ? this.data.deletedDeviceIds : [];
+  }
+
+  getDeletedMessageIds(): string[] {
+    return Array.isArray(this.data.deletedMessageIds) ? this.data.deletedMessageIds : [];
+  }
+
+  getDeletedNotificationIds(): string[] {
+    return Array.isArray(this.data.deletedNotificationIds) ? this.data.deletedNotificationIds : [];
+  }
+
+  getDeletedArticleIds(): string[] {
+    return Array.isArray(this.data.deletedArticleIds) ? this.data.deletedArticleIds : [];
+  }
+
+  getDeletedEventIds(): string[] {
+    return Array.isArray(this.data.deletedEventIds) ? this.data.deletedEventIds : [];
+  }
+
+  getDeletedNoteIds(): string[] {
+    return Array.isArray(this.data.deletedNoteIds) ? this.data.deletedNoteIds : [];
+  }
+
+  getDeletedBillIds(): string[] {
+    return Array.isArray(this.data.deletedBillIds) ? this.data.deletedBillIds : [];
+  }
+
+  getDeletedDocumentIds(): string[] {
+    return Array.isArray(this.data.deletedDocumentIds) ? this.data.deletedDocumentIds : [];
+  }
+
+  toggleVerifiedBadge(userId: string): { isVerified: boolean; permanent?: boolean } {
     const user = this.data.users.find((u) => u.id === userId);
     if (!user) throw new Error('Pengguna tidak ditemukan.');
+
+    // Akun GURU: centang biru PERMANEN — tidak bisa dinonaktifkan
+    if (user.role === 'guru') {
+      user.isVerified = true;
+      user.badgeType = 'blue';
+      if (Array.isArray(this.data.posts)) {
+        this.data.posts.forEach((p) => {
+          if (p.authorId === userId) { p.authorIsVerified = true; p.authorBadgeType = 'blue'; }
+        });
+      }
+      if (Array.isArray(this.data.stories)) {
+        this.data.stories.forEach((s) => {
+          if (s.authorId === userId) { s.authorIsVerified = true; s.authorBadgeType = 'blue'; }
+        });
+      }
+      this.save();
+      return { isVerified: true, permanent: true };
+    }
+
+    // Akun lain: toggle biasa
     user.isVerified = !user.isVerified;
+    if (user.isVerified && !user.badgeType) user.badgeType = 'blue';
+    if (!user.isVerified) user.badgeType = undefined;
     if (Array.isArray(this.data.posts)) {
       this.data.posts.forEach((p) => {
         if (p.authorId === userId) p.authorIsVerified = user.isVerified;
@@ -3751,12 +4699,16 @@ class DatabaseManager {
     return msg;
   }
 
-  deleteDirectMessage(messageId: string, userId: string): boolean {
+  deleteDirectMessage(messageId: string, userId: string, isAdmin = false): boolean {
     if (!Array.isArray(this.data.directMessages)) return false;
-    const msg = this.data.directMessages.find((m) => m.id === messageId);
-    if (!msg) return false;
-    if (msg.senderId === userId || msg.recipientId === userId) {
-      msg.isDeleted = true;
+    const idx = this.data.directMessages.findIndex((m) => m.id === messageId);
+    if (idx === -1) {
+      return (this.data.deletedMessageIds || []).includes(messageId);
+    }
+    const msg = this.data.directMessages[idx];
+    if (msg.senderId === userId || msg.recipientId === userId || isAdmin) {
+      this.data.directMessages.splice(idx, 1);
+      this.recordTombstone('deletedMessageIds', messageId);
       this.save();
       return true;
     }
@@ -4265,6 +5217,36 @@ class DatabaseManager {
     return rep;
   }
 
+  deleteLostFoundItem(id: string): boolean {
+    if (!Array.isArray(this.data.lostFoundItems)) return false;
+    const existed = this.data.lostFoundItems.some((i) => i.id === id) || (this.data.deletedLostFoundIds || []).includes(id);
+    if (!existed) return false;
+    this.recordTombstone('deletedLostFoundIds', id);
+    this.data.lostFoundItems = this.data.lostFoundItems.filter((i) => i.id !== id);
+    this.save();
+    return true;
+  }
+
+  deleteActivityPermission(id: string): boolean {
+    if (!Array.isArray(this.data.activityPermissions)) return false;
+    const existed = this.data.activityPermissions.some((p) => p.id === id) || (this.data.deletedPermissionIds || []).includes(id);
+    if (!existed) return false;
+    this.recordTombstone('deletedPermissionIds', id);
+    this.data.activityPermissions = this.data.activityPermissions.filter((p) => p.id !== id);
+    this.save();
+    return true;
+  }
+
+  deleteAppReport(id: string): boolean {
+    if (!Array.isArray(this.data.appReports)) return false;
+    const existed = this.data.appReports.some((r) => r.id === id) || (this.data.deletedAppReportIds || []).includes(id);
+    if (!existed) return false;
+    this.recordTombstone('deletedAppReportIds', id);
+    this.data.appReports = this.data.appReports.filter((r) => r.id !== id);
+    this.save();
+    return true;
+  }
+
   // -------------------------------------------------------------
   // PEMBUATAN AKUN ADMINISTRASI & STAF (SINKRONISASI MULTI-DEVICE)
   // -------------------------------------------------------------
@@ -4277,27 +5259,42 @@ class DatabaseManager {
     email?: string;
     phone?: string;
   }): User {
-    const cleanU = data.username.trim().toLowerCase();
-    const existing = this.data.users.find((u) => u.username.toLowerCase() === cleanU);
+    const cleanU = (data.username || '').trim().toLowerCase().replace(/^@+/, '');
+    if (!cleanU || cleanU.length < 3) {
+      throw new Error('Username minimal 3 karakter.');
+    }
+    const existing = this.data.users.find(
+      (u) => (u.username || '').trim().toLowerCase().replace(/^@+/, '') === cleanU
+    );
     if (existing) throw new Error(`Username @${cleanU} sudah digunakan.`);
 
-    const initialPassword = data.password?.trim() || ('Tamvesta!' + Math.floor(1000 + Math.random() * 9000));
-    const pass = hashPassword(initialPassword);
+    const rawPassword = data.password?.trim() || ('Tamvesta!' + Math.floor(1000 + Math.random() * 9000));
+    if (rawPassword.length < 6) {
+      throw new Error('Password minimal 6 karakter.');
+    }
+    const pass = hashPassword(rawPassword);
+    const id = `user_staff_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    this.data.deletedUserIds = (this.data.deletedUserIds || []).filter(
+      (did) => did !== id && did.toLowerCase().replace(/^@+/, '') !== cleanU
+    );
+
     const newStaff: User = {
-      id: `user_staff_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id,
       username: cleanU,
       name: data.name.trim(),
       role: data.role || 'tata_usaha',
       jabatan: data.jabatan || (data.role === 'admin' ? 'Administrator' : data.role === 'kepala_sekolah' ? 'Kepala Sekolah' : 'Staf Tata Usaha'),
-      initialPassword,
-      password: initialPassword,
       passwordHash: pass.hash,
       salt: pass.salt,
+      tokenVersion: 0,
       mustChangePassword: false,
       isActive: true,
-      email: data.email,
-      phone: data.phone,
-      qrToken: generateQrToken(cleanU, data.name),
+      isVerified: data.role === 'guru' ? true : undefined,
+      badgeType: data.role === 'guru' ? 'green' : undefined,
+      email: data.email?.trim() || undefined,
+      phone: data.phone?.trim() || undefined,
+      qrToken: generateQrToken(id, cleanU),
+      avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(data.name.trim())}&backgroundColor=059669`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -4372,13 +5369,15 @@ class DatabaseManager {
 
   deleteSchedule(id: string): boolean {
     if (!Array.isArray(this.data.schedules)) return false;
+    const existed = this.data.schedules.some((s) => s.id === id) || (this.data.deletedScheduleIds || []).includes(id);
+    if (!existed) return false;
+    this.recordTombstone('deletedScheduleIds', id);
     const initialLen = this.data.schedules.length;
     this.data.schedules = this.data.schedules.filter((s) => s.id !== id);
     if (this.data.schedules.length !== initialLen) {
       this.save();
-      return true;
     }
-    return false;
+    return true;
   }
 
   // -------------------------------------------------------------
@@ -4400,6 +5399,11 @@ class DatabaseManager {
       createdAt: existingIdx !== -1 ? this.data.deviceSessions[existingIdx].createdAt : now,
     };
 
+    // Jika id sesi ini pernah di-tombstone (hapus paksa dari device manager), izinkan sesi login baru memakai id baru atau hapus tombstone jika login ulang eksplisit
+    if (Array.isArray(this.data.deletedDeviceIds) && this.data.deletedDeviceIds.includes(updatedSession.id)) {
+      this.data.deletedDeviceIds = this.data.deletedDeviceIds.filter((d) => d !== updatedSession.id);
+    }
+
     if (existingIdx !== -1) {
       this.data.deviceSessions[existingIdx] = updatedSession;
     } else {
@@ -4415,16 +5419,22 @@ class DatabaseManager {
 
   getUserDeviceSessions(userId: string): DeviceSession[] {
     if (!Array.isArray(this.data.deviceSessions)) return [];
-    return this.data.deviceSessions.filter((s) => s.userId === userId);
+    const delSet = new Set(this.data.deletedDeviceIds || []);
+    return this.data.deviceSessions.filter((s) => s.userId === userId && !delSet.has(s.id));
   }
 
   getAllDeviceSessions(): DeviceSession[] {
     if (!Array.isArray(this.data.deviceSessions)) return [];
-    return this.data.deviceSessions;
+    const delSet = new Set(this.data.deletedDeviceIds || []);
+    return this.data.deviceSessions.filter((s) => !delSet.has(s.id));
   }
 
   deleteDeviceSession(sessionId: string, userId?: string): boolean {
     if (!Array.isArray(this.data.deviceSessions)) return false;
+    const target = this.data.deviceSessions.find((s) => s.id === sessionId);
+    if (!target && !(this.data.deletedDeviceIds || []).includes(sessionId)) return false;
+    if (target && userId && target.userId !== userId) return false;
+    this.recordTombstone('deletedDeviceIds', sessionId);
     const initialLen = this.data.deviceSessions.length;
     this.data.deviceSessions = this.data.deviceSessions.filter((s) => {
       if (s.id === sessionId) {
@@ -4435,6 +5445,16 @@ class DatabaseManager {
     });
     if (this.data.deviceSessions.length !== initialLen) {
       this.save();
+      if (target) {
+        this.emitRealtimeEvent({
+          type: 'session_revoked',
+          entity: 'devices',
+          action: 'deleted',
+          entityId: sessionId,
+          targetUserId: target.userId,
+          payload: { sessionId, reason: 'Sesi perangkat diakhiri oleh Administrator.' },
+        });
+      }
       return true;
     }
     return false;
@@ -4444,7 +5464,12 @@ class DatabaseManager {
   // MANAJEMEN KELAS (SCHOOL CLASSES)
   // -------------------------------------------------------------
   getSchoolClasses(): SchoolClass[] {
-    if (!Array.isArray(this.data.schoolClasses) || this.data.schoolClasses.length === 0) {
+    const delSet = new Set(this.data.deletedClassIds || []);
+    if (!Array.isArray(this.data.schoolClasses)) {
+      this.data.schoolClasses = [];
+    }
+    // Seed default kelas HANYA sekali saat inisialisasi pertama kali (jangan pernah re-seed jika admin sudah menghapus semua kelas)
+    if (!this.data.hasSeededDefaultClasses && this.data.schoolClasses.length === 0 && delSet.size === 0) {
       this.data.schoolClasses = [
         { id: 'class_7a', name: 'Kelas 7A', grade: '7', description: 'Kelas 7 Unggulan', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
         { id: 'class_7b', name: 'Kelas 7B', grade: '7', description: 'Kelas 7 Reguler', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
@@ -4453,17 +5478,23 @@ class DatabaseManager {
         { id: 'class_9a', name: 'Kelas 9A', grade: '9', description: 'Kelas 9 Persiapan Ujian', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
         { id: 'class_9b', name: 'Kelas 9B', grade: '9', description: 'Kelas 9 Reguler', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
       ];
+      this.data.hasSeededDefaultClasses = true;
       this.save();
+    } else if (!this.data.hasSeededDefaultClasses && (this.data.schoolClasses.length > 0 || delSet.size > 0)) {
+      this.data.hasSeededDefaultClasses = true;
     }
     // Calculate student count dynamically
     const students = this.getAllStudents();
-    return this.data.schoolClasses.map((c) => ({
-      ...c,
-      totalStudents: students.filter((s) => (s.kelas || '').toLowerCase() === c.name.toLowerCase() || (s.kelas || '').toLowerCase().includes(c.name.toLowerCase())).length,
-    }));
+    return this.data.schoolClasses
+      .filter((c) => !delSet.has(c.id))
+      .map((c) => ({
+        ...c,
+        totalStudents: students.filter((s) => (s.kelas || '').toLowerCase() === c.name.toLowerCase() || (s.kelas || '').toLowerCase().includes(c.name.toLowerCase())).length,
+      }));
   }
 
   saveSchoolClass(item: Partial<SchoolClass> & { name: string; grade: string }): SchoolClass {
+    this.data.hasSeededDefaultClasses = true;
     const classes = this.getSchoolClasses();
     const id = item.id || `cls_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const now = new Date().toISOString();
@@ -4491,14 +5522,25 @@ class DatabaseManager {
   }
 
   deleteSchoolClass(id: string): boolean {
+    this.data.hasSeededDefaultClasses = true;
     if (!Array.isArray(this.data.schoolClasses)) return false;
+    const targetClass = this.data.schoolClasses.find((c) => c.id === id);
+    const existed = Boolean(targetClass) || (this.data.deletedClassIds || []).includes(id);
+    if (!existed) return false;
+    this.recordTombstone('deletedClassIds', id);
     const initialLen = this.data.schoolClasses.length;
     this.data.schoolClasses = this.data.schoolClasses.filter((c) => c.id !== id);
+    // Cleanly detach schedules/students referencing deleted class name without breaking history
+    if (targetClass && Array.isArray(this.data.schedules)) {
+      const targetNameLower = targetClass.name.toLowerCase();
+      this.data.schedules = this.data.schedules.map((sch) =>
+        sch.grade.toLowerCase() === targetNameLower ? { ...sch, isPublished: false } : sch
+      );
+    }
     if (this.data.schoolClasses.length !== initialLen) {
       this.save();
-      return true;
     }
-    return false;
+    return true;
   }
 
   // -------------------------------------------------------------

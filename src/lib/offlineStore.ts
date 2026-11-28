@@ -334,13 +334,12 @@ function loadDB(): StandaloneDB {
   }
 
   (db as any).deletedUserIds = (db as any).deletedUserIds || [];
-  // Bersihkan deletedUserIds agar tidak memblokir akun siswa terdaftar admin
-  if (Array.isArray((db as any).deletedUserIds)) {
-    (db as any).deletedUserIds = (db as any).deletedUserIds.filter((did: string) => {
-      const clean = (did || '').toLowerCase().replace(/^@+/, '');
-      return DEMO_STUDENT_USERNAMES.includes(clean) || did.startsWith('user_siswa_siswa_') || explicitDeleted.includes(did.toLowerCase()) || explicitDeleted.includes(clean);
-    });
-  }
+  // Tambahkan explicitDeleted ke deletedUserIds agar tombstone dari admin lokal juga tercatat
+  explicitDeleted.forEach((did) => {
+    if (did && !(db as any).deletedUserIds.includes(did)) {
+      (db as any).deletedUserIds.push(did);
+    }
+  });
   DEMO_STUDENT_USERNAMES.forEach((du) => {
     if (!(db as any).deletedUserIds.includes(du)) (db as any).deletedUserIds.push(du);
   });
@@ -1362,6 +1361,9 @@ export const offlineStore = {
     db.stories = (db.stories || []).filter(
       (s) => s.id !== id || (user && s.authorId !== user.id && user.role !== 'admin')
     );
+    // Tombstone permanen agar story tidak muncul kembali setelah sinkronisasi
+    (db as any).deletedStoryIds = (db as any).deletedStoryIds || [];
+    if (!(db as any).deletedStoryIds.includes(id)) (db as any).deletedStoryIds.push(id);
     saveDB(db);
     return { message: 'Story berhasil dihapus' };
   },
@@ -1831,10 +1833,25 @@ export const offlineStore = {
   getNotifications(): (AppNotification & { isRead: boolean })[] {
     const db = loadDB();
     const user = this.getCurrentUser();
-    return (db.notifications || []).map((n) => ({
-      ...n,
-      isRead: user ? (n.readBy || []).includes(user.id) : false,
-    }));
+    const role = user?.role;
+    const userClass = user?.kelas;
+    return (db.notifications || [])
+      .filter((n) => {
+        if (!n) return false;
+        if (user && Array.isArray(n.deletedBy) && n.deletedBy.includes(user.id)) return false;
+        if (n.targetUserId && (!user || n.targetUserId !== user.id)) return false;
+        if (n.targetRole && n.targetRole !== role) return false;
+        if (Array.isArray(n.targetRoles) && n.targetRoles.length > 0 && (!role || !n.targetRoles.includes(role))) {
+          return false;
+        }
+        if (n.type === 'admin_account_event' && role !== 'admin') return false;
+        if (n.targetClass && userClass && n.targetClass !== userClass) return false;
+        return true;
+      })
+      .map((n) => ({
+        ...n,
+        isRead: user ? (n.readBy || []).includes(user.id) : false,
+      }));
   },
 
   markNotificationRead(id: string) {
@@ -1895,7 +1912,16 @@ export const offlineStore = {
   },
 
   getStaff(): User[] {
-    return (loadDB().users || []).filter((u) => u.role === 'guru' || u.role === 'kepala_sekolah' || u.role === 'tata_usaha');
+    const explicitDeleted = getAdminExplicitlyDeletedIds();
+    const db = loadDB();
+    const delIds = ((db as any).deletedUserIds || []).map((x: string) => x.toLowerCase().replace(/^@+/, ''));
+    return (db.users || [])
+      .filter((u) => u.role !== 'siswa')
+      .filter((u) => {
+        const uId = (u.id || '').toLowerCase();
+        const uName = (u.username || '').toLowerCase().replace(/^@+/, '');
+        return !explicitDeleted.includes(uId) && !explicitDeleted.includes(uName) && !delIds.includes(uId) && !delIds.includes(uName);
+      });
   },
 
   // -------------------------------------------------------------
@@ -2356,37 +2382,44 @@ export const offlineStore = {
     if (!Array.isArray(ids) || ids.length === 0) return;
     const db = loadDB();
     (db as any).deletedUserIds = (db as any).deletedUserIds || [];
-    const explicit = getAdminExplicitlyDeletedIds();
-    const backup = getAdminRegisteredStudentsBackup();
-    const backupUsernames = backup.map((b) => (b.username || '').toLowerCase().replace(/^@+/, ''));
-    const backupIds = backup.map((b) => (b.id || '').toLowerCase());
+    const deletedSet = new Set<string>(
+      ((db as any).deletedUserIds || []).map((x: string) => x.toLowerCase().trim().replace(/^@+/, ''))
+    );
 
     let changed = false;
     ids.forEach((did) => {
       if (!did) return;
       const clean = did.toLowerCase().trim();
       const cleanU = clean.replace(/^@+/, '');
-
-      // JANGAN PERNAH hapus akun siswa aktif yang didaftarkan admin via sinkronisasi remote
-      if ((backupIds.includes(clean) || backupUsernames.includes(cleanU)) && !explicit.includes(clean) && !explicit.includes(cleanU)) {
-        return;
-      }
+      deletedSet.add(clean);
+      deletedSet.add(cleanU);
 
       if (!(db as any).deletedUserIds.includes(clean)) {
         (db as any).deletedUserIds.push(clean);
         changed = true;
       }
+      if (!(db as any).deletedUserIds.includes(cleanU)) {
+        (db as any).deletedUserIds.push(cleanU);
+        changed = true;
+      }
     });
 
-    // Hapus akun yang cocok dari db.users secara permanen (hanya akun demo atau yang eksplisit dihapus)
+    // Hapus akun yang cocok dari db.users & backup secara permanen sesuai keputusan backend
     const prevCount = (db.users || []).length;
     db.users = (db.users || []).filter((u) => {
       const uId = (u.id || '').toLowerCase();
       const uName = (u.username || '').toLowerCase().replace(/^@+/, '');
       if (DEMO_STUDENT_USERNAMES.includes(uName) || uId.startsWith('user_siswa_siswa_')) return false;
-      if (explicit.includes(uId) || explicit.includes(uName)) return false;
+      if (deletedSet.has(uId) || deletedSet.has(uName)) return false;
       return true;
     });
+
+    const filteredBackup = getAdminRegisteredStudentsBackup().filter((b) => {
+      const bId = (b.id || '').toLowerCase();
+      const bUn = (b.username || '').toLowerCase().replace(/^@+/, '');
+      return !deletedSet.has(bId) && !deletedSet.has(bUn);
+    });
+    saveAdminRegisteredStudentsBackup(filteredBackup);
 
     if ((db.users || []).length !== prevCount) {
       changed = true;
@@ -2405,6 +2438,16 @@ export const offlineStore = {
   getDeletedPostIds(): string[] {
     const db = loadDB();
     return (db as any).deletedPostIds || [];
+  },
+
+  getDeletedStoryIds(): string[] {
+    const db = loadDB();
+    return (db as any).deletedStoryIds || [];
+  },
+
+  getDeletedMessageIds(): string[] {
+    const db = loadDB();
+    return (db as any).deletedMessageIds || [];
   },
 
   getPasswordResetRequests(): PasswordResetRequest[] {
@@ -2618,7 +2661,16 @@ export const offlineStore = {
     const db = loadDB();
     const idx = db.users.findIndex((u) => u.id === id);
     if (idx === -1) return { message: 'Akun tidak ditemukan' };
+    const removedUser = db.users[idx];
     db.users.splice(idx, 1);
+    // Tombstone permanen agar tidak muncul kembali
+    (db as any).deletedUserIds = (db as any).deletedUserIds || [];
+    if (!(db as any).deletedUserIds.includes(id)) (db as any).deletedUserIds.push(id);
+    if (removedUser?.username) {
+      const lc = removedUser.username.toLowerCase();
+      if (!(db as any).deletedUserIds.includes(lc)) (db as any).deletedUserIds.push(lc);
+    }
+    addAdminExplicitlyDeletedId(id, removedUser?.username);
     saveDB(db);
     return { message: 'Akun guru berhasil dihapus dari sistem' };
   },
@@ -2627,6 +2679,13 @@ export const offlineStore = {
     const db = loadDB();
     const user = db.users.find((u) => u.id === userId);
     if (!user) throw new Error('Pengguna tidak ditemukan.');
+    // Guru selalu mendapatkan centang biru permanen — tidak bisa di-toggle
+    if ((user as any).role === 'guru') {
+      user.isVerified = true;
+      (user as any).badgeType = 'blue';
+      saveDB(db);
+      return { isVerified: true, permanent: true };
+    }
     user.isVerified = !user.isVerified;
     if (Array.isArray(db.posts)) {
       db.posts.forEach((p) => {
@@ -2926,10 +2985,15 @@ export const offlineStore = {
   deleteDirectMessage(messageId: string, userId: string): boolean {
     const db = loadDB();
     if (!Array.isArray((db as any).directMessages)) return false;
-    const msg = (db as any).directMessages.find((m: any) => m.id === messageId);
-    if (!msg) return false;
+    const idx = (db as any).directMessages.findIndex((m: any) => m.id === messageId);
+    if (idx === -1) return false;
+    const msg = (db as any).directMessages[idx];
     if (msg.senderId === userId || msg.recipientId === userId) {
-      msg.isDeleted = true;
+      // Hapus permanen (splice), bukan hanya tandai isDeleted
+      (db as any).directMessages.splice(idx, 1);
+      // Tombstone permanen agar tidak muncul kembali
+      (db as any).deletedMessageIds = (db as any).deletedMessageIds || [];
+      if (!(db as any).deletedMessageIds.includes(messageId)) (db as any).deletedMessageIds.push(messageId);
       saveDB(db);
       return true;
     }

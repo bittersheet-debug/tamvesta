@@ -14,6 +14,8 @@ import {
   Users,
 } from 'lucide-react';
 import type { DeviceSession } from '../../types/index.ts';
+import { ConfirmDeleteModal } from '../../components/ConfirmDeleteModal.tsx';
+import { useToast } from '../../context/ToastContext.tsx';
 
 interface DeviceManagementTabProps {
   sessions: DeviceSession[];
@@ -29,6 +31,8 @@ export const DeviceManagementTab: React.FC<DeviceManagementTabProps> = ({
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'mobile' | 'desktop'>('all');
   const [terminatingId, setTerminatingId] = useState<string | null>(null);
+  const [sessionToDelete, setSessionToDelete] = useState<DeviceSession | null>(null);
+  const { showSuccess, showError } = useToast();
 
   const filteredSessions = sessions.filter((s) => {
     const matchesSearch =
@@ -44,17 +48,20 @@ export const DeviceManagementTab: React.FC<DeviceManagementTabProps> = ({
     return matchesSearch && matchesType;
   });
 
-  const handleTerminate = async (sessionId: string, deviceName: string, userName: string) => {
-    if (!window.confirm(`Keluarkan sesi perangkat "${deviceName}" milik ${userName}? Pengguna akan diminta login ulang.`)) {
-      return;
-    }
+  const handleTerminate = (session: DeviceSession) => {
+    setSessionToDelete(session);
+  };
 
-    setTerminatingId(sessionId);
+  const handleConfirmTerminate = async () => {
+    if (!sessionToDelete) return;
+    setTerminatingId(sessionToDelete.id);
     try {
-      await onTerminateSession(sessionId);
+      await onTerminateSession(sessionToDelete.id);
+      showSuccess('Sesi Perangkat Diakhiri', `Sesi ${sessionToDelete.userName} (${sessionToDelete.deviceName || sessionToDelete.os}) telah dicabut secara permanen.`);
+      setSessionToDelete(null);
       onRefresh();
     } catch (err: any) {
-      alert(err.message || 'Gagal mengakhiri sesi perangkat');
+      showError('Gagal Mengakhiri Sesi', err.message || 'Gagal mengakhiri sesi perangkat');
     } finally {
       setTerminatingId(null);
     }
@@ -255,7 +262,7 @@ export const DeviceManagementTab: React.FC<DeviceManagementTabProps> = ({
                     </td>
                     <td className="p-3.5 text-right">
                       <button
-                        onClick={() => handleTerminate(session.id, session.deviceName || 'Perangkat', session.userName)}
+                        onClick={() => handleTerminate(session)}
                         disabled={terminatingId === session.id}
                         className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-bold text-[11px] transition shadow-xs cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50"
                         title="Akhiri sesi perangkat ini"
@@ -271,6 +278,19 @@ export const DeviceManagementTab: React.FC<DeviceManagementTabProps> = ({
           </table>
         </div>
       </div>
+
+      <ConfirmDeleteModal
+        isOpen={Boolean(sessionToDelete)}
+        title="Akhiri Sesi Perangkat?"
+        itemName={sessionToDelete ? `${sessionToDelete.userName} • ${sessionToDelete.deviceName || sessionToDelete.os}` : undefined}
+        message="Apakah Anda yakin ingin menghapus sesi perangkat ini secara permanen?"
+        warningText="Perangkat ini akan otomatis keluar dari sistem TAMVESTA dan diminta login ulang."
+        confirmLabel="Hapus Permanen"
+        cancelLabel="Batal"
+        loading={Boolean(terminatingId)}
+        onCancel={() => setSessionToDelete(null)}
+        onConfirm={handleConfirmTerminate}
+      />
     </div>
   );
 };

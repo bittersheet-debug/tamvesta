@@ -26,6 +26,7 @@ import {
   Send,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.tsx';
+import { useToast } from '../../context/ToastContext.tsx';
 import { api } from '../../lib/api.ts';
 import type {
   LostFoundItem,
@@ -46,6 +47,7 @@ export const SchoolReportsPage: React.FC<SchoolReportsPageProps> = ({
   defaultTab = 'lost_found',
 }) => {
   const { user } = useAuth();
+  const { showSuccess, showError } = useToast();
   const [activeMainTab, setActiveMainTab] = useState<'lost_found' | 'school_services'>(defaultTab);
 
   // -------------------------------------------------------------
@@ -136,13 +138,22 @@ export const SchoolReportsPage: React.FC<SchoolReportsPageProps> = ({
   useEffect(() => {
     loadLfData();
     loadServiceData();
+    const onSync = (e: any) => {
+      const entity = e?.detail?.entity;
+      if (!entity || ['lost_found', 'permissions', 'app_reports', 'system'].includes(entity)) {
+        loadLfData();
+        loadServiceData();
+      }
+    };
+    window.addEventListener('tamvesta_realtime_sync', onSync);
+    return () => window.removeEventListener('tamvesta_realtime_sync', onSync);
   }, []);
 
   // Submit Lost & Found
   const handleSubmitLf = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!lfItemName.trim() || !lfDescription.trim() || !lfLocation.trim()) {
-      alert('Nama barang, deskripsi, dan lokasi wajib diisi.');
+      showError('Validasi Gagal', 'Nama barang, deskripsi, dan lokasi wajib diisi.');
       return;
     }
 
@@ -164,9 +175,9 @@ export const SchoolReportsPage: React.FC<SchoolReportsPageProps> = ({
       setLfDescription('');
       setLfLocation('');
       setLfPhotoUrl(undefined);
-      alert('Laporan berhasil dikirim dan otomatis masuk ke Dashboard Guru, Pos Satpam, dan Tata Usaha (TU)!');
+      showSuccess('Laporan Terkirim', 'Laporan berhasil dikirim ke Dashboard Guru, Pos Satpam, dan Tata Usaha!');
     } catch (err: any) {
-      alert(err.message || 'Gagal mengirim laporan barang.');
+      showError('Gagal Mengirim', err.message || 'Gagal mengirim laporan barang.');
     } finally {
       setIsSubmittingLf(false);
     }
@@ -176,7 +187,7 @@ export const SchoolReportsPage: React.FC<SchoolReportsPageProps> = ({
   const handleSubmitClaim = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedItemToClaim || !claimReason.trim() || !claimFeatures.trim()) {
-      alert('Alasan klaim dan ciri-ciri khusus wajib diisi.');
+      showError('Validasi Gagal', 'Alasan klaim dan ciri-ciri khusus wajib diisi.');
       return;
     }
 
@@ -192,9 +203,9 @@ export const SchoolReportsPage: React.FC<SchoolReportsPageProps> = ({
       setClaimReason('');
       setClaimFeatures('');
       setClaimInfo('');
-      alert('Pengajuan klaim berhasil dikirim! Guru, Satpam, dan Tata Usaha (TU) akan memeriksa bukti kepemilikan Anda.');
+      showSuccess('Klaim Terkirim', 'Pengajuan klaim berhasil dikirim! Petugas akan memeriksa bukti kepemilikan Anda.');
     } catch (err: any) {
-      alert(err.message || 'Gagal mengirim pengajuan klaim.');
+      showError('Gagal Mengirim Klaim', err.message || 'Gagal mengirim pengajuan klaim.');
     } finally {
       setIsSubmittingClaim(false);
     }
@@ -204,7 +215,7 @@ export const SchoolReportsPage: React.FC<SchoolReportsPageProps> = ({
   const handleSubmitPerm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!permOrg.trim() || !permName.trim() || !permDate || !permLocation.trim()) {
-      alert('Organisasi, nama kegiatan, lokasi, dan tanggal wajib diisi.');
+      showError('Validasi Gagal', 'Organisasi, nama kegiatan, lokasi, dan tanggal wajib diisi.');
       return;
     }
 
@@ -230,9 +241,9 @@ export const SchoolReportsPage: React.FC<SchoolReportsPageProps> = ({
       setPermDate('');
       setPermTeacher('');
       setPermNotes('');
-      alert('Pengajuan izin kegiatan berhasil dikirim! Menunggu verifikasi pemeriksaan Satpam & persetujuan Kepala Sekolah.');
+      showSuccess('Izin Terkirim', 'Pengajuan izin kegiatan berhasil dikirim! Menunggu pemeriksaan Satpam & Kepala Sekolah.');
     } catch (err: any) {
-      alert(err.message || 'Gagal mengirim izin kegiatan.');
+      showError('Gagal Mengirim Izin', err.message || 'Gagal mengirim izin kegiatan.');
     } finally {
       setIsSubmittingPerm(false);
     }
@@ -242,7 +253,7 @@ export const SchoolReportsPage: React.FC<SchoolReportsPageProps> = ({
   const handleSubmitReport = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reportTitle.trim() || !reportDesc.trim()) {
-      alert('Judul dan penjelasan laporan wajib diisi.');
+      showError('Validasi Gagal', 'Judul dan penjelasan laporan wajib diisi.');
       return;
     }
 
@@ -261,9 +272,9 @@ export const SchoolReportsPage: React.FC<SchoolReportsPageProps> = ({
       setReportTitle('');
       setReportDesc('');
       setReportScreenshot(undefined);
-      alert(`Laporan Anda telah dikirim ke tim ${reportTargetHandler === 'support' ? 'Support TAMVESTA' : 'Tata Usaha'}!`);
+      showSuccess('Laporan Terkirim', `Laporan Anda telah dikirim ke tim ${reportTargetHandler === 'support' ? 'Support TAMVESTA' : 'Tata Usaha'}!`);
     } catch (err: any) {
-      alert(err.message || 'Gagal mengirim laporan aplikasi.');
+      showError('Gagal Mengirim Laporan', err.message || 'Gagal mengirim laporan aplikasi.');
     } finally {
       setIsSubmittingReport(false);
     }

@@ -13,6 +13,8 @@ import {
   Tag,
 } from 'lucide-react';
 import { api } from '../../lib/api.ts';
+import { useToast } from '../../context/ToastContext.tsx';
+import { ConfirmDeleteModal } from '../../components/ConfirmDeleteModal.tsx';
 import type { PersonalNote } from '../../types/index.ts';
 
 const COLOR_OPTIONS = [
@@ -24,9 +26,12 @@ const COLOR_OPTIONS = [
 ];
 
 export const ArchiveNotesPage: React.FC = () => {
+  const { showSuccess, showError } = useToast();
   const [notes, setNotes] = useState<PersonalNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [deletingNote, setDeletingNote] = useState<PersonalNote | null>(null);
+  const [deletingLoading, setDeletingLoading] = useState(false);
 
   // Note Modal state (for create & edit)
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -49,6 +54,14 @@ export const ArchiveNotesPage: React.FC = () => {
 
   useEffect(() => {
     loadNotes();
+    const onSync = (e: any) => {
+      const entity = e?.detail?.entity;
+      if (!entity || entity === 'notes' || entity === 'system') {
+        loadNotes();
+      }
+    };
+    window.addEventListener('tamvesta_realtime_sync', onSync);
+    return () => window.removeEventListener('tamvesta_realtime_sync', onSync);
   }, []);
 
   const handleOpenCreate = () => {
@@ -70,7 +83,7 @@ export const ArchiveNotesPage: React.FC = () => {
   const handleSaveNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!noteTitle.trim() && !noteContent.trim()) {
-      alert('Judul atau isi catatan tidak boleh kosong.');
+      showError('Validasi Gagal', 'Judul atau isi catatan tidak boleh kosong.');
       return;
     }
 
@@ -83,6 +96,7 @@ export const ArchiveNotesPage: React.FC = () => {
           color: noteColor,
         });
         setNotes((prev) => prev.map((n) => (n.id === editingNoteId ? updated : n)));
+        showSuccess('Catatan Diperbarui', 'Catatan pribadi berhasil disimpan.');
       } else {
         const created = await api.createNote({
           title: noteTitle,
@@ -90,22 +104,33 @@ export const ArchiveNotesPage: React.FC = () => {
           color: noteColor,
         });
         setNotes((prev) => [created, ...prev]);
+        showSuccess('Catatan Disimpan', 'Catatan baru ditambahkan ke arsip.');
       }
       setIsEditorOpen(false);
     } catch (err: any) {
-      alert(err.message || 'Gagal menyimpan catatan.');
+      showError('Gagal Menyimpan', err.message || 'Gagal menyimpan catatan.');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDeleteNote = async (noteId: string) => {
-    if (!confirm('Hapus catatan pribadi ini? Tindakan tidak dapat dibatalkan.')) return;
+  const handleDeleteNote = (noteId: string) => {
+    const found = notes.find((n) => n.id === noteId) || { id: noteId, title: 'Catatan Pribadi' } as PersonalNote;
+    setDeletingNote(found);
+  };
+
+  const confirmDeleteNote = async () => {
+    if (!deletingNote) return;
+    setDeletingLoading(true);
     try {
-      await api.deleteNote(noteId);
-      setNotes((prev) => prev.filter((n) => n.id !== noteId));
+      await api.deleteNote(deletingNote.id);
+      setNotes((prev) => prev.filter((n) => n.id !== deletingNote.id));
+      showSuccess('Catatan Dihapus Permanen', 'Catatan pribadi berhasil dihapus selamanya.');
+      setDeletingNote(null);
     } catch (err: any) {
-      alert(err.message || 'Gagal menghapus catatan.');
+      showError('Gagal Menghapus', err.message || 'Gagal menghapus catatan.');
+    } finally {
+      setDeletingLoading(false);
     }
   };
 
@@ -341,6 +366,15 @@ export const ArchiveNotesPage: React.FC = () => {
           </div>
         </div>
       )}
+      <ConfirmDeleteModal
+        isOpen={Boolean(deletingNote)}
+        title="Hapus Catatan Pribadi"
+        message="Apakah Anda yakin ingin menghapus data ini secara permanen?"
+        itemName={deletingNote?.title}
+        loading={deletingLoading}
+        onCancel={() => setDeletingNote(null)}
+        onConfirm={confirmDeleteNote}
+      />
     </div>
   );
 };

@@ -21,6 +21,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.tsx';
+import { useToast } from '../../context/ToastContext.tsx';
 import { api } from '../../lib/api.ts';
 import { PhotoCropModal } from '../../components/PhotoCropModal.tsx';
 import { PRESET_AVATARS } from '../../constants/presetAvatars.ts';
@@ -35,6 +36,7 @@ interface ProfilePageProps {
 
 export const ProfilePage: React.FC<ProfilePageProps> = ({ onBack }) => {
   const { user, refreshUser } = useAuth();
+  const { showSuccess, showError } = useToast();
 
   // Photo Cropping States
   const [tempImageForCrop, setTempImageForCrop] = useState<string | null>(null);
@@ -91,21 +93,31 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onBack }) => {
   };
 
   useEffect(() => {
-    // Refresh user data immediately to pull latest verified badge status
     refreshUser();
 
-    // Sinyal sinkronisasi otomatis dari Admin Dashboard
+    const onRealtimeSync = (e: any) => {
+      const entity = e?.detail?.entity;
+      if (!entity || ['users', 'posts', 'system'].includes(entity)) {
+        refreshUser();
+        loadMyTickets();
+      }
+    };
+    window.addEventListener('tamvesta_realtime_sync', onRealtimeSync);
+
+    let channel: BroadcastChannel | null = null;
     try {
-      const channel = new BroadcastChannel('tamvesta_admin_sync');
+      channel = new BroadcastChannel('tamvesta_admin_sync');
       channel.onmessage = (event) => {
         if (event.data?.type === 'REFRESH_ALL' || event.data?.userId === user?.id) {
           refreshUser();
         }
       };
-      return () => {
-        try { channel.close(); } catch (_) {}
-      };
     } catch (_) {}
+
+    return () => {
+      window.removeEventListener('tamvesta_realtime_sync', onRealtimeSync);
+      try { channel?.close(); } catch (_) {}
+    };
   }, [user?.id]);
 
   const loadMyTickets = async () => {
@@ -195,7 +207,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onBack }) => {
     if (!file) return;
 
     if (file.size > 15 * 1024 * 1024) {
-      alert('Ukuran file maksimal 15MB.');
+      showError('File Terlalu Besar', 'Ukuran file maksimal 15MB.');
       return;
     }
 
@@ -217,8 +229,9 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onBack }) => {
     try {
       await api.updateProfile({ avatarUrl: croppedDataUrl });
       await refreshUser();
+      showSuccess('Foto Diperbarui', 'Foto profil berhasil diperbarui dan tersinkronisasi!');
     } catch (err: any) {
-      alert(err.message || 'Gagal menyimpan foto profil.');
+      showError('Gagal Simpan Foto', err.message || 'Gagal menyimpan foto profil.');
     } finally {
       setUpdatingPhoto(false);
       setTempImageForCrop(null);
@@ -232,8 +245,9 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onBack }) => {
       await api.updateProfile({ bio: bioText });
       await refreshUser();
       setIsEditingBio(false);
+      showSuccess('Bio Diperbarui', 'Bio profil berhasil diperbarui.');
     } catch (err: any) {
-      alert(err.message || 'Gagal memperbarui bio.');
+      showError('Gagal Update Bio', err.message || 'Gagal memperbarui bio.');
     } finally {
       setBioLoading(false);
     }
@@ -423,8 +437,9 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onBack }) => {
                       try {
                         await api.updateProfile({ avatarUrl: av.url });
                         await refreshUser();
+                        showSuccess('Avatar Diubah', `Avatar berhasil diganti ke ${av.name}.`);
                       } catch (err: any) {
-                        alert(err.message || 'Gagal mengubah foto profil.');
+                        showError('Gagal Ganti Avatar', err.message || 'Gagal mengubah foto profil.');
                       } finally {
                         setUpdatingPhoto(false);
                       }

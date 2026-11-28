@@ -42,6 +42,7 @@ export interface User {
   usernameChangeHistory?: { oldUsername: string; newUsername: string; changedAt: string }[];
   following?: string[]; // Daftar ID pengguna yang diikuti
   followers?: string[]; // Daftar ID pengikut
+  tokenVersion?: number; // Dinaikkan saat password berubah / akun dinonaktifkan / dihapus untuk cabut sesi lama
   createdAt: string;
   updatedAt: string;
 }
@@ -502,13 +503,23 @@ export interface AppNotification {
     | 'app_report'
     | 'quiz'
     | 'quiz_violation'
+    | 'security'
+    | 'admin_account_event'
     | 'system';
   isImportant?: boolean;
-  linkType?: 'announcement' | 'subject' | 'quiz' | 'tuition' | 'article' | 'post' | 'dm' | 'reports' | 'none';
+  linkType?: 'announcement' | 'subject' | 'quiz' | 'tuition' | 'article' | 'post' | 'dm' | 'reports' | 'students' | 'staff' | 'none';
   linkId?: string;
   targetRole?: UserRole;
+  targetRoles?: UserRole[];
   targetClass?: string;
   targetUserId?: string;
+  excludeUserId?: string;
+  excludeDeviceId?: string;
+  dedupeKey?: string;
+  actorId?: string;
+  actorName?: string;
+  statusLabel?: string;
+  metadata?: Record<string, any>;
   readBy: string[];
   deletedBy: string[];
   createdAt: string;
@@ -794,6 +805,48 @@ export interface SchoolActivityLog {
   userName: string;
   userRole: string;
   timestamp: string;
+}
+
+// -------------------------------------------------------------
+// REAL-TIME MULTI-DEVICE SYNC EVENTS
+// -------------------------------------------------------------
+export interface RealtimeEvent {
+  id: string;
+  seq: number;
+  type: 'sync_update' | 'admin_notification' | 'session_revoked' | 'heartbeat';
+  entity:
+    | 'users'
+    | 'classes'
+    | 'schedules'
+    | 'announcements'
+    | 'subjects'
+    | 'books'
+    | 'quizzes'
+    | 'posts'
+    | 'stories'
+    | 'notifications'
+    | 'articles'
+    | 'events'
+    | 'tu_bills'
+    | 'tu_transactions'
+    | 'tu_documents'
+    | 'tu_reports'
+    | 'lost_found'
+    | 'permissions'
+    | 'app_reports'
+    | 'devices'
+    | 'dm'
+    | 'activity_logs'
+    | 'system';
+  action: 'created' | 'updated' | 'deleted' | 'status_changed' | 'notification';
+  entityId?: string;
+  targetRoles?: UserRole[];
+  targetUserId?: string;
+  excludeUserId?: string;
+  excludeDeviceId?: string;
+  notification?: AppNotification;
+  payload?: Record<string, any>;
+  createdAt: string;
 }
 
 // -------------------------------------------------------------

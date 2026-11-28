@@ -21,8 +21,11 @@ import {
   X,
   FileText,
   RefreshCw,
+  Trash2,
 } from 'lucide-react';
 import { api } from '../lib/api.ts';
+import { useToast } from '../context/ToastContext.tsx';
+import { ConfirmDeleteModal } from './ConfirmDeleteModal.tsx';
 import type {
   LostFoundItem,
   LostFoundClaim,
@@ -39,10 +42,13 @@ export const LostFoundManagementPanel: React.FC<LostFoundManagementPanelProps> =
   userRole,
   userName = 'Petugas',
 }) => {
+  const { showSuccess, showError } = useToast();
   const [items, setItems] = useState<LostFoundItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'lost' | 'found' | 'with_claims'>('all');
+  const [deletingItem, setDeletingItem] = useState<LostFoundItem | null>(null);
+  const [isDeletingItem, setIsDeletingItem] = useState(false);
 
   // Claim Review Modal
   const [reviewingClaim, setReviewingClaim] = useState<{
@@ -93,8 +99,18 @@ export const LostFoundManagementPanel: React.FC<LostFoundManagementPanelProps> =
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 12000);
-    return () => clearInterval(interval);
+    const interval = setInterval(loadData, 15000);
+    const onSync = (e: any) => {
+      const entity = e?.detail?.entity;
+      if (!entity || entity === 'lost_found' || entity === 'system') {
+        loadData();
+      }
+    };
+    window.addEventListener('tamvesta_realtime_sync', onSync);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('tamvesta_realtime_sync', onSync);
+    };
   }, []);
 
   // Update Status Laporan
@@ -102,8 +118,25 @@ export const LostFoundManagementPanel: React.FC<LostFoundManagementPanelProps> =
     try {
       const updated = await api.updateLostFoundItem(itemId, { status: newStatus });
       setItems((prev) => prev.map((i) => (i.id === itemId ? updated : i)));
+      showSuccess('Status Diperbarui', 'Status laporan barang berhasil diperbarui.');
     } catch (err: any) {
-      alert(err.message || 'Gagal memperbarui status');
+      showError('Gagal Memperbarui', err.message || 'Gagal memperbarui status');
+    }
+  };
+
+  // Delete LostFound Item Permanently
+  const handleConfirmDeleteItem = async () => {
+    if (!deletingItem) return;
+    setIsDeletingItem(true);
+    try {
+      await api.deleteLostFoundItem(deletingItem.id);
+      setItems((prev) => prev.filter((i) => i.id !== deletingItem.id));
+      showSuccess('Laporan Dihapus Permanen', `Laporan "${deletingItem.itemName}" telah dihapus permanen.`);
+      setDeletingItem(null);
+    } catch (err: any) {
+      showError('Gagal Menghapus', err.message || 'Gagal menghapus laporan barang');
+    } finally {
+      setIsDeletingItem(false);
     }
   };
 
@@ -125,9 +158,9 @@ export const LostFoundManagementPanel: React.FC<LostFoundManagementPanelProps> =
       setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
       setReviewingClaim(null);
       setOfficerNoteInput('');
-      alert(`Klaim barang berhasil diperbarui: ${status.replace(/_/g, ' ')}`);
+      showSuccess('Klaim Diperbarui', `Klaim barang berhasil diperbarui: ${status.replace(/_/g, ' ')}`);
     } catch (err: any) {
-      alert(err.message || 'Gagal memproses klaim');
+      showError('Gagal Memproses Klaim', err.message || 'Gagal memproses klaim');
     } finally {
       setIsProcessingClaim(false);
     }
@@ -137,7 +170,7 @@ export const LostFoundManagementPanel: React.FC<LostFoundManagementPanelProps> =
   const handleCreateItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItemName.trim() || !newItemDescription.trim() || !newItemLocation.trim()) {
-      alert('Nama barang, deskripsi, dan lokasi wajib diisi.');
+      showError('Validasi Gagal', 'Nama barang, deskripsi, dan lokasi wajib diisi.');
       return;
     }
 
@@ -159,9 +192,9 @@ export const LostFoundManagementPanel: React.FC<LostFoundManagementPanelProps> =
       setNewItemDescription('');
       setNewItemLocation('');
       setNewItemPhoto(undefined);
-      alert('Laporan barang berhasil ditambahkan dan dapat diakses oleh Guru, TU, dan Satpam!');
+      showSuccess('Laporan Ditambahkan', 'Laporan barang berhasil ditambahkan dan dapat diakses Guru, TU, dan Satpam!');
     } catch (err: any) {
-      alert(err.message || 'Gagal menambahkan laporan barang.');
+      showError('Gagal Menambahkan', err.message || 'Gagal menambahkan laporan barang.');
     } finally {
       setIsSubmittingItem(false);
     }
@@ -172,7 +205,7 @@ export const LostFoundManagementPanel: React.FC<LostFoundManagementPanelProps> =
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 2 * 1024 * 1024) {
-        alert('Ukuran foto maksimal 2MB');
+        showError('Ukuran Foto Terlalu Besar', 'Ukuran foto maksimal 2MB');
         return;
       }
       const reader = new FileReader();
@@ -465,23 +498,33 @@ export const LostFoundManagementPanel: React.FC<LostFoundManagementPanelProps> =
               </div>
 
               {/* Status Selector Dropdown */}
-              <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
                 <span className="text-[10px] text-slate-400 font-bold uppercase">Status Laporan:</span>
-                <select
-                  value={item.status}
-                  onChange={(e) => handleUpdateItemStatus(item.id, e.target.value as LostFoundStatus)}
-                  className="text-xs font-bold px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500"
-                >
-                  <option value="menunggu_pemeriksaan">Menunggu Pemeriksaan</option>
-                  <option value="sedang_ditindaklanjuti">Sedang Ditindaklanjuti</option>
-                  <option value="disimpan_guru">Disimpan di Ruang Guru</option>
-                  <option value="disimpan_tu">Disimpan di Ruang TU</option>
-                  <option value="disimpan_satpam">Disimpan di Pos Satpam</option>
-                  <option value="barang_ditemukan">Barang Telah Ditemukan</option>
-                  <option value="menunggu_pengambilan">Menunggu Pengambilan</option>
-                  <option value="barang_telah_dikembalikan">Barang Telah Dikembalikan</option>
-                  <option value="laporan_selesai">Laporan Selesai</option>
-                </select>
+                <div className="flex items-center gap-1.5">
+                  <select
+                    value={item.status}
+                    onChange={(e) => handleUpdateItemStatus(item.id, e.target.value as LostFoundStatus)}
+                    className="text-xs font-bold px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value="menunggu_pemeriksaan">Menunggu Pemeriksaan</option>
+                    <option value="sedang_ditindaklanjuti">Sedang Ditindaklanjuti</option>
+                    <option value="disimpan_guru">Disimpan di Ruang Guru</option>
+                    <option value="disimpan_tu">Disimpan di Ruang TU</option>
+                    <option value="disimpan_satpam">Disimpan di Pos Satpam</option>
+                    <option value="barang_ditemukan">Barang Telah Ditemukan</option>
+                    <option value="menunggu_pengambilan">Menunggu Pengambilan</option>
+                    <option value="barang_telah_dikembalikan">Barang Telah Dikembalikan</option>
+                    <option value="laporan_selesai">Laporan Selesai</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setDeletingItem(item)}
+                    className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-xl border border-rose-200 transition"
+                    title="Hapus Laporan Permanen"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             </div>
           ))}
@@ -761,6 +804,15 @@ export const LostFoundManagementPanel: React.FC<LostFoundManagementPanelProps> =
           </div>
         </div>
       )}
+      <ConfirmDeleteModal
+        isOpen={Boolean(deletingItem)}
+        title="Hapus Laporan Barang"
+        message="Apakah Anda yakin ingin menghapus data ini secara permanen?"
+        itemName={deletingItem?.itemName}
+        loading={isDeletingItem}
+        onCancel={() => setDeletingItem(null)}
+        onConfirm={handleConfirmDeleteItem}
+      />
     </div>
   );
 };

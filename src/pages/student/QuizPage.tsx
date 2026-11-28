@@ -26,6 +26,7 @@ import {
 import confetti from 'canvas-confetti';
 import { api } from '../../lib/api.ts';
 import { useAuth } from '../../context/AuthContext.tsx';
+import { useToast } from '../../context/ToastContext.tsx';
 import type { Quiz, QuizAttempt } from '../../types/index.ts';
 import {
   getAppVolume,
@@ -66,6 +67,7 @@ export function formatGoogleFormsEmbedUrl(url: string): string {
 
 export const QuizPage: React.FC<Props> = ({ onBackToDashboard, onQuizActiveChange }) => {
   const { user } = useAuth();
+  const { showError } = useToast();
 
   // State untuk pemuatan lembar soal Google Forms di dalam aplikasi
   const [iframeLoading, setIframeLoading] = useState(true);
@@ -134,10 +136,18 @@ export const QuizPage: React.FC<Props> = ({ onBackToDashboard, onQuizActiveChang
     };
 
     fetchQuizzes();
-    const interval = setInterval(fetchQuizzes, 3500);
+    const interval = setInterval(fetchQuizzes, 12000);
+    const onSync = (e: any) => {
+      const entity = e?.detail?.entity;
+      if (!entity || entity === 'quizzes' || entity === 'system') {
+        fetchQuizzes();
+      }
+    };
+    window.addEventListener('tamvesta_realtime_sync', onSync);
     return () => {
       isMounted = false;
       clearInterval(interval);
+      window.removeEventListener('tamvesta_realtime_sync', onSync);
     };
   }, []);
 
@@ -330,7 +340,7 @@ export const QuizPage: React.FC<Props> = ({ onBackToDashboard, onQuizActiveChang
         });
       }
     } catch (err: any) {
-      alert(err.message || 'Gagal mengirimkan jawaban kuis.');
+      showError('Gagal Kirim Jawaban', err.message || 'Gagal mengirimkan jawaban kuis.');
     } finally {
       setSubmitting(false);
     }

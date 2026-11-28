@@ -209,7 +209,7 @@ export const Login: React.FC<LoginProps> = ({ onOpenRegistrationPortal, initialU
 
           <div className="grid grid-cols-2 gap-2.5">
             <a
-              href="https://github.com/bittersheet-debug/tamvesta/raw/main/TAMVESTA.apk"
+              href="https://tamvesta.vercel.app/TAMVESTA.apk"
               download="TAMVESTA.apk"
               className="flex items-center justify-center gap-2 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition shadow-sm active:scale-[0.98]"
             >

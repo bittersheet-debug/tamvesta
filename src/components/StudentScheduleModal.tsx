@@ -44,16 +44,27 @@ export const StudentScheduleModal: React.FC<StudentScheduleModalProps> = ({ isOp
   }, [user?.kelas]);
 
   useEffect(() => {
-    if (isOpen) {
-      setLoading(true);
-      setZoomLevel(1);
-      setPanPosition({ x: 0, y: 0 });
+    const fetchSchedules = () => {
       api.getSchedules()
         .then((res) => {
           if (Array.isArray(res)) setSchedules(res.filter((s) => s.isPublished));
         })
         .catch(() => {})
         .finally(() => setLoading(false));
+    };
+    if (isOpen) {
+      setLoading(true);
+      setZoomLevel(1);
+      setPanPosition({ x: 0, y: 0 });
+      fetchSchedules();
+      const onSync = (e: any) => {
+        const entity = e?.detail?.entity;
+        if (!entity || entity === 'schedules' || entity === 'system') {
+          fetchSchedules();
+        }
+      };
+      window.addEventListener('tamvesta_realtime_sync', onSync);
+      return () => window.removeEventListener('tamvesta_realtime_sync', onSync);
     }
   }, [isOpen]);
 

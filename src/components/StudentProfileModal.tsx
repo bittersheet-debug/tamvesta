@@ -28,6 +28,7 @@ import type { PasswordResetRequest } from '../types/index.ts';
 import type { User } from '../types/index.ts';
 import { api, setStoredToken } from '../lib/api.ts';
 import { useAuth } from '../context/AuthContext.tsx';
+import { useToast } from '../context/ToastContext.tsx';
 import { ImageLightboxModal } from './ImageLightboxModal.tsx';
 import { PhotoCropModal } from './PhotoCropModal.tsx';
 import { PRESET_AVATARS } from '../constants/presetAvatars.ts';
@@ -42,6 +43,7 @@ interface Props {
 
 export const StudentProfileModal: React.FC<Props> = ({ user: initialUser, isOpen, onClose }) => {
   const { refreshUser } = useAuth();
+  const { showError } = useToast();
   const [currentUser, setCurrentUser] = useState<User>(initialUser);
   const [isCropModalOpen, setIsCropModalOpen] = useState(false);
   const [tempImageForCrop, setTempImageForCrop] = useState<string | null>(null);
@@ -165,7 +167,7 @@ export const StudentProfileModal: React.FC<Props> = ({ user: initialUser, isOpen
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 20 * 1024 * 1024) {
-      alert('Ukuran file maksimal 20MB.');
+      showError('File Terlalu Besar', 'Ukuran file maksimal 20MB.');
       return;
     }
     const reader = new FileReader();
@@ -188,7 +190,7 @@ export const StudentProfileModal: React.FC<Props> = ({ user: initialUser, isOpen
       setPhotoSuccessMsg('Foto profil berhasil diganti & tersimpan selamanya!');
       setTimeout(() => setPhotoSuccessMsg(null), 4000);
     } catch (err: any) {
-      alert(err.message || 'Gagal menyimpan foto profil.');
+      showError('Gagal Simpan Foto', err.message || 'Gagal menyimpan foto profil.');
     } finally {
       setUpdatingPhoto(false);
       setTempImageForCrop(null);
@@ -205,7 +207,7 @@ export const StudentProfileModal: React.FC<Props> = ({ user: initialUser, isOpen
       setPhotoSuccessMsg(`Foto profil diubah ke "${avatarName}" & tersimpan selamanya!`);
       setTimeout(() => setPhotoSuccessMsg(null), 4000);
     } catch (err: any) {
-      alert(err.message || 'Gagal mengubah foto profil.');
+      showError('Gagal Ubah Foto', err.message || 'Gagal mengubah foto profil.');
     } finally {
       setUpdatingPhoto(false);
     }

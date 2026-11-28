@@ -14,6 +14,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { api } from '../lib/api.ts';
+import { useAuth } from '../context/AuthContext.tsx';
 import {
   isNotificationSupported,
   getNotificationPermission,
@@ -39,6 +40,7 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
   onNavigateToQuiz,
   onRefreshUnreadCount,
 }) => {
+  const { user } = useAuth();
   const [notifications, setNotifications] = useState<(AppNotification & { isRead: boolean })[]>([]);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [loading, setLoading] = useState(true);
@@ -66,9 +68,18 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
     const handlePermChange = (e: any) => {
       setNotifPerm(e.detail || getNotificationPermission());
     };
+    const handleRealtimeRefresh = () => {
+      if (isOpen) loadNotifications();
+    };
     window.addEventListener('tamvesta_notification_permission_changed', handlePermChange);
-    return () => window.removeEventListener('tamvesta_notification_permission_changed', handlePermChange);
-  }, []);
+    window.addEventListener('tamvesta_refresh_notifications', handleRealtimeRefresh);
+    window.addEventListener('tamvesta_admin_notification', handleRealtimeRefresh);
+    return () => {
+      window.removeEventListener('tamvesta_notification_permission_changed', handlePermChange);
+      window.removeEventListener('tamvesta_refresh_notifications', handleRealtimeRefresh);
+      window.removeEventListener('tamvesta_admin_notification', handleRealtimeRefresh);
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -159,9 +170,9 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
             </div>
             <div>
               <h2 className="font-black text-sm sm:text-base flex items-center gap-1.5">
-                <span>Pusat Kontrol & Notifikasi Siswa</span>
+                <span>{user?.role === 'admin' ? 'Notifikasi Dashboard Admin' : 'Pusat Kontrol & Notifikasi'}</span>
                 <span className="text-[10px] bg-amber-400 text-slate-950 font-black px-1.5 py-0.2 rounded-md uppercase">
-                  Siaran Resmi
+                  {user?.role === 'admin' ? 'Real-Time' : 'Siaran Resmi'}
                 </span>
               </h2>
               <p className="text-[11px] text-teal-100">
@@ -308,9 +319,14 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
                         {notif.title}
                       </h4>
                     </div>
-                    <p className="text-[11px] text-slate-600 mt-1 line-clamp-2 leading-relaxed">
+                    <p className="text-[11px] text-slate-600 mt-1 line-clamp-3 leading-relaxed">
                       {notif.message}
                     </p>
+                    {notif.statusLabel && (
+                      <span className="inline-block text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md mt-1">
+                        {notif.statusLabel}
+                      </span>
+                    )}
                     <span className="text-[10px] text-slate-400 font-medium block mt-1">
                       {formatTime(notif.createdAt)}
                     </span>

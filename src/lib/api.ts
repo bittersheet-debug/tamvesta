@@ -1,13 +1,8 @@
 import {
   offlineStore,
-  getPermanentAvatar,
-  savePermanentAvatar,
-  getPermanentBio,
-  savePermanentBio,
-  DEMO_STUDENT_USERNAMES,
-  getAdminExplicitlyDeletedIds,
   isDemoStudent,
 } from './offlineStore.ts';
+import { getClientDeviceId, getClientSessionId, clearClientSessionId } from './deviceIdentity.ts';
 import type {
   User,
   UserRole,
@@ -55,7 +50,7 @@ import {
 
 const TOKEN_KEY = 'tamvesta_auth_token';
 const SERVER_URL_KEY = 'tamvesta_server_url';
-export const DEFAULT_SERVER_URL = 'https://apkupdate-indol.vercel.app';
+export const DEFAULT_SERVER_URL = 'https://tamvesta.vercel.app';
 
 export function getStoredToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -67,10 +62,11 @@ export function setStoredToken(token: string) {
 
 export function removeStoredToken() {
   localStorage.removeItem(TOKEN_KEY);
+  clearClientSessionId();
   offlineStore.setCurrentUserId(null);
 }
 
-/** Ambil base URL server yang tersimpan, default ke Vercel Cloud https://apkupdate-indol.vercel.app */
+/** Ambil base URL server yang tersimpan, default ke Vercel Cloud https://tamvesta.vercel.app */
 export function getServerUrl(): string {
   const stored = localStorage.getItem(SERVER_URL_KEY);
   // Bersihkan IP lokal lama laptop atau domain lama jika tersimpan
@@ -81,6 +77,7 @@ export function getServerUrl(): string {
       stored.includes('127.0.0.1') ||
       stored.includes(':3000') ||
       stored.includes('tamvestaa.vercel.app') ||
+      stored.includes('apkupdate-indol.vercel.app') ||
       stored.includes('apkupdate.vercel.app'))
   ) {
     localStorage.removeItem(SERVER_URL_KEY);
@@ -135,20 +132,24 @@ const isStandalone = typeof window !== 'undefined' && (
  */
 export function resolveUrl(endpoint: string): string {
   if (typeof window !== 'undefined') {
-    const custom = localStorage.getItem(SERVER_URL_KEY);
-    if (custom) return `${custom.replace(/\/+$/, '')}${endpoint}`;
+    const resolvedServer = getServerUrl();
+    const hasExplicitCustomServer = Boolean(localStorage.getItem(SERVER_URL_KEY));
+    if (hasExplicitCustomServer && resolvedServer) {
+      return `${resolvedServer.replace(/\/+$/, '')}${endpoint}`;
+    }
 
     const host = window.location.hostname || '';
     const port = window.location.port || '';
-    const isLocalDev = (host === 'localhost' || host === '127.0.0.1') && (port === '5173' || port === '3000');
-    const isProductionWeb = host.includes('vercel.app');
+    const isCapacitorWebView =
+      isStandalone ||
+      ((host === 'localhost' || host === '127.0.0.1') && !port);
 
-    // Jika berjalan di web Vercel production atau Vite dev server lokal, gunakan relative endpoint
-    if (isProductionWeb || isLocalDev) {
+    // Jika berjalan di browser web (Vercel, Vite dev, localhost:PORT, atau LAN IP:PORT), gunakan relative endpoint
+    if (!isCapacitorWebView && (window.location.protocol === 'http:' || window.location.protocol === 'https:')) {
       return endpoint;
     }
 
-    // Jika di Android APK (Capacitor / WebView dengan origin localhost tanpa port dev)
+    // Jika di Android APK (Capacitor / WebView tanpa port HTTP dev)
     return `${DEFAULT_SERVER_URL}${endpoint}`;
   }
   const base = getServerUrl();
@@ -159,13 +160,20 @@ export function resolveUrl(endpoint: string): string {
 async function tryServerRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = resolveUrl(endpoint);
   const token = getStoredToken();
+  const deviceId = getClientDeviceId();
+  const sessionId = getClientSessionId();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'X-Device-Id': deviceId,
+    'Cache-Control': 'no-cache',
     ...(options.headers as Record<string, string> || {}),
   };
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+  }
+  if (sessionId) {
+    headers['X-Session-Id'] = sessionId;
   }
 
   const controller = new AbortController();
@@ -175,14 +183,28 @@ async function tryServerRequest<T>(endpoint: string, options: RequestInit = {}):
     const response = await fetch(url, {
       ...options,
       headers,
+      cache: 'no-store',
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
+      if (
+        (response.status === 401 || response.status === 403) &&
+        typeof window !== 'undefined' &&
+        (data?.code === 'SESSION_REVOKED' || data?.code === 'ACCOUNT_DISABLED' || data?.code === 'INVALID_TOKEN') &&
+        !endpoint.includes('/api/auth/login')
+      ) {
+        window.dispatchEvent(
+          new CustomEvent('tamvesta_session_revoked', {
+            detail: { reason: data.error || 'Sesi atau akun Anda telah dicabut oleh Administrator.' },
+          })
+        );
+      }
       const err: any = new Error(data.error || data.message || `Request gagal (${response.status})`);
       err.status = response.status;
+      err.code = data?.code;
       throw err;
     }
     return data as T;
@@ -193,7 +215,7 @@ async function tryServerRequest<T>(endpoint: string, options: RequestInit = {}):
 }
 
 export const api = {
-  // Pre-sync all public users from server for multi-device support
+  // Pre-sync public users cache (read-only from authoritative server)
   syncPublicUsers: async (forceRefresh = false) => {
     try {
       const endpoint = forceRefresh ? `/api/users/public-sync?_t=${Date.now()}` : '/api/users/public-sync';
@@ -203,7 +225,7 @@ export const api = {
       if (Array.isArray(syncRes?.deletedUserIds) && syncRes.deletedUserIds.length > 0) {
         offlineStore.recordDeletedUserIds(syncRes.deletedUserIds);
       }
-      if (Array.isArray(syncRes?.users) && syncRes.users.length > 0) {
+      if (Array.isArray(syncRes?.users)) {
         const cleanUsers = syncRes.users.filter((u: any) => !isDemoStudent(u));
         offlineStore.mergeUsersFromServer(cleanUsers);
         if (Array.isArray(syncRes.passwordResetRequests)) {
@@ -218,38 +240,19 @@ export const api = {
   getPublicUsers: async (): Promise<User[]> => {
     try {
       const res = await tryServerRequest<{ users: User[] }>('/api/users/public');
-      if (Array.isArray(res?.users) && res.users.length > 0) {
+      if (Array.isArray(res?.users)) {
         return res.users.filter((u: any) => !isDemoStudent(u));
       }
     } catch (_) {}
     return offlineStore.getAllUsers();
   },
 
-  // Bulk sync local users to cloud server
+  // Disabled stale local upload resurrection so deleted/modified accounts remain strictly authoritative on server
   syncLocalUsersToServer: async () => {
-    try {
-      const localUsers = offlineStore.getStudents();
-      if (Array.isArray(localUsers) && localUsers.length > 0) {
-        return await tryServerRequest<{ success: boolean; added: number; updated: number }>('/api/admin/sync-local-users', {
-          method: 'POST',
-          body: JSON.stringify({ users: localUsers }),
-        });
-      }
-    } catch (_) {}
     return null;
   },
 
-  // Bulk sync local tickets to cloud server
   syncLocalTicketsToServer: async () => {
-    try {
-      const localTickets = offlineStore.getPasswordResetRequests();
-      if (Array.isArray(localTickets) && localTickets.length > 0) {
-        return await tryServerRequest<{ count: number }>('/api/student/tickets/sync-multiple', {
-          method: 'POST',
-          body: JSON.stringify({ tickets: localTickets }),
-        });
-      }
-    } catch (_) {}
     return null;
   },
 
@@ -371,13 +374,11 @@ export const api = {
   },
 
   login: async (credentials: { username: string; password: string }) => {
-    let serverError: any = null;
     const cleanCredentials = {
       username: credentials.username.trim().toLowerCase().replace(/^@+/, ''),
       password: credentials.password,
     };
 
-    // Coba login via server terlebih dahulu
     try {
       const res = await tryServerRequest<{ token: string; user: User; mustChangePassword: boolean }>('/api/auth/login', {
         method: 'POST',
@@ -385,83 +386,45 @@ export const api = {
       });
       setStoredToken(res.token);
       offlineStore.setCurrentUserId(res.user.id);
-      // Simpan user + password ke localStorage agar bisa login offline selamanya
-      offlineStore.saveStudentFromServer(res.user, credentials.password);
+      offlineStore.syncUserFromServer(res.user);
       return { ...res, mustChangePassword: false };
     } catch (err: any) {
-      serverError = err;
-      // Akun dinonaktifkan secara eksplisit
-      if (err.status === 403) throw err;
-    }
-
-    // Coba login di penyimpanan lokal
-    try {
-      const res = offlineStore.login(cleanCredentials);
-      setStoredToken(res.token);
-      return res;
-    } catch (_offlineErr) {
-      // User tidak ditemukan di lokal dan server — coba ambil semua users dari server
-      // lalu merge ke localStorage dan coba login ulang (untuk HP baru / fresh install)
-      try {
-        const syncRes = await tryServerRequest<{ users: User[]; deletedUserIds?: string[] }>('/api/users/public-sync');
-        if (Array.isArray(syncRes?.deletedUserIds) && syncRes.deletedUserIds.length > 0) {
-          offlineStore.recordDeletedUserIds(syncRes.deletedUserIds);
-        }
-        if (Array.isArray(syncRes?.users) && syncRes.users.length > 0) {
-          offlineStore.mergeUsersFromServer(syncRes.users);
-          if (Array.isArray((syncRes as any).passwordResetRequests)) {
-            (syncRes as any).passwordResetRequests.forEach((t: any) => offlineStore.saveTicketDirect(t));
-          }
-          // Coba login lagi setelah merge
-          try {
-            const res2 = offlineStore.login(cleanCredentials);
-            setStoredToken(res2.token);
-            return res2;
-          } catch (_) {}
-        }
-      } catch (_syncErr) {}
-
-      // Lempar error server jika 401 (salah password), atau error lokal
-      if (serverError && serverError.status === 401) throw serverError;
-      throw new Error('Username atau kata sandi tidak valid. Pastikan akun sudah terdaftar oleh Admin.');
+      if (err?.status === 401 || err?.status === 403 || err?.status === 400) {
+        throw err;
+      }
+      throw new Error(
+        err?.name === 'AbortError'
+          ? 'Koneksi ke server utama TAMVESTA habis waktu. Periksa koneksi internet Anda.'
+          : (err?.message || 'Tidak dapat terhubung ke database utama TAMVESTA. Pastikan server aktif.')
+      );
     }
   },
 
   getMe: async () => {
-    try {
-      const res = await tryServerRequest<{ user: User; mustChangePassword: boolean }>('/api/auth/me');
-      offlineStore.setCurrentUserId(res.user.id);
-      offlineStore.syncUserFromServer(res.user);
-      return res;
-    } catch (_) {
-      return offlineStore.getMe();
-    }
+    const res = await tryServerRequest<{ user: User; mustChangePassword: boolean }>('/api/auth/me');
+    offlineStore.setCurrentUserId(res.user.id);
+    offlineStore.syncUserFromServer(res.user);
+    return res;
   },
 
   changePassword: async (passwords: { oldPassword: string; newPassword: string }) => {
-    try {
-      return await tryServerRequest<{ message: string; user: User }>('/api/auth/change-password', {
-        method: 'POST',
-        body: JSON.stringify(passwords),
-      });
-    } catch (_) {
-      return offlineStore.changePassword(passwords.oldPassword, passwords.newPassword);
-    }
+    const res = await tryServerRequest<{ message: string; user: User; token?: string }>('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify(passwords),
+    });
+    if (res.token) setStoredToken(res.token);
+    if (res.user) offlineStore.syncUserFromServer(res.user);
+    return res;
   },
 
   updateUsername: async (newUsername: string) => {
-    try {
-      const res = await tryServerRequest<{ message: string; user: User; token: string }>('/api/auth/username', {
-        method: 'PUT',
-        body: JSON.stringify({ newUsername }),
-      });
-      if (res.token) setStoredToken(res.token);
-      return res;
-    } catch (_) {
-      const res = offlineStore.updateUsername(newUsername);
-      setStoredToken(res.token);
-      return res;
-    }
+    const res = await tryServerRequest<{ message: string; user: User; token: string }>('/api/auth/username', {
+      method: 'PUT',
+      body: JSON.stringify({ newUsername }),
+    });
+    if (res.token) setStoredToken(res.token);
+    if (res.user) offlineStore.syncUserFromServer(res.user);
+    return res;
   },
 
   updateProfile: async (data: { avatarUrl?: string; bio?: string; phone?: string; email?: string }) => {
@@ -590,198 +553,127 @@ export const api = {
   },
 
   getStudents: async (forceRefresh = false) => {
-    let serverStudents: User[] = [];
-    try {
-      const endpoint = forceRefresh ? `/api/admin/students?withDeleted=true&_t=${Date.now()}` : '/api/admin/students?withDeleted=true';
-      const resp = await tryServerRequest<any>(endpoint, {
-        headers: forceRefresh ? { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } : undefined,
-      });
-      if (Array.isArray(resp)) {
-        serverStudents = resp;
-      } else if (resp && Array.isArray(resp.students)) {
-        serverStudents = resp.students;
-        if (Array.isArray(resp.deletedUserIds) && resp.deletedUserIds.length > 0) {
-          offlineStore.recordDeletedUserIds(resp.deletedUserIds);
-        }
-      }
-    } catch (_) {
-      serverStudents = [];
-    }
-
-    const localStudents = offlineStore.getStudents();
-    const studentMap = new Map<string, User>();
-    const explicitDeleted = getAdminExplicitlyDeletedIds();
-
-    // 1. Put all local students first so newly created accounts are ALWAYS included immediately
-    localStudents.forEach((ls) => {
-      if (isDemoStudent(ls)) return;
-      const cleanU = (ls.username || '').toLowerCase().replace(/^@+/, '');
-      if (!explicitDeleted.includes(ls.id.toLowerCase()) && !explicitDeleted.includes(cleanU) && !explicitDeleted.includes((ls.username || '').toLowerCase())) {
-        const permAvatar = getPermanentAvatar(ls.id, ls.username);
-        const permBio = getPermanentBio(ls.id, ls.username);
-        studentMap.set(cleanU, {
-          ...ls,
-          avatarUrl: permAvatar || ls.avatarUrl,
-          bio: permBio !== null && permBio !== undefined ? permBio : ls.bio,
-        });
-      }
+    const endpoint = forceRefresh ? `/api/admin/students?withDeleted=true&_t=${Date.now()}` : '/api/admin/students?withDeleted=true';
+    const resp = await tryServerRequest<any>(endpoint, {
+      headers: forceRefresh ? { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } : undefined,
     });
-
-    // 2. Merge server students: ALWAYS update with latest server data (photo, bio, phone, email)!
-    if (Array.isArray(serverStudents) && serverStudents.length > 0) {
-      serverStudents.forEach((ss) => {
-        if (isDemoStudent(ss)) return;
-        const cleanU = (ss.username || '').toLowerCase().replace(/^@+/, '');
-        if (!explicitDeleted.includes(ss.id.toLowerCase()) && !explicitDeleted.includes(cleanU) && !explicitDeleted.includes((ss.username || '').toLowerCase())) {
-          const existing = studentMap.get(cleanU);
-          const permAvatar = getPermanentAvatar(ss.id, ss.username);
-          const permBio = getPermanentBio(ss.id, ss.username);
-          const finalAvatar = ss.avatarUrl || (existing ? existing.avatarUrl : null) || permAvatar;
-          const finalBio = ss.bio || (existing ? existing.bio : null) || permBio;
-          const finalPhone = ss.phone || (existing ? existing.phone : undefined);
-          const finalEmail = ss.email || (existing ? existing.email : undefined);
-
-          const merged: User = {
-            ...(existing || {}),
-            ...ss,
-            avatarUrl: finalAvatar || ss.avatarUrl,
-            bio: finalBio || ss.bio,
-            phone: finalPhone,
-            email: finalEmail,
-          };
-
-          if (finalAvatar) savePermanentAvatar(ss.id, ss.username, finalAvatar);
-          if (finalBio !== undefined && finalBio !== null) savePermanentBio(ss.id, ss.username, finalBio);
-
-          studentMap.set(cleanU, merged);
-          offlineStore.syncStudentEntity(merged);
-        }
-      });
+    let serverStudents: User[] = [];
+    if (Array.isArray(resp)) {
+      serverStudents = resp;
+    } else if (resp && Array.isArray(resp.students)) {
+      serverStudents = resp.students;
+      if (Array.isArray(resp.deletedUserIds) && resp.deletedUserIds.length > 0) {
+        offlineStore.recordDeletedUserIds(resp.deletedUserIds);
+      }
     }
-
-    return Array.from(studentMap.values());
+    const cleanStudents = serverStudents.filter((ss) => !isDemoStudent(ss));
+    offlineStore.mergeUsersFromServer(cleanStudents);
+    return cleanStudents;
   },
 
-  updateStudent: async (id: string, data: Partial<User>) => {
-    try {
-      return await tryServerRequest<{ message: string; student: User }>(`/api/admin/students/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      });
-    } catch (_) {
-      const updated = offlineStore.updateStudent(id, data);
-      return { message: 'Data siswa berhasil diperbarui', student: updated as User };
+  updateStudent: async (id: string, data: Partial<User> & { password?: string; isActive?: boolean; role?: UserRole; jabatan?: string; expectedUpdatedAt?: string }) => {
+    const res = await tryServerRequest<{ message: string; student: User }>(`/api/admin/students/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (res?.student) {
+      offlineStore.syncStudentEntity(res.student);
     }
+    return res;
   },
 
   deleteStudent: async (id: string) => {
+    const res = await tryServerRequest<{ message: string }>(`/api/admin/students/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
     offlineStore.deleteStudent(id);
-    try {
-      return await tryServerRequest<{ message: string }>(`/api/admin/students/${id}`, {
-        method: 'DELETE',
-      });
-    } catch (_) {
-      return { message: 'Akun siswa berhasil dihapus.' };
-    }
+    return res;
   },
 
   createStudent: async (studentData: Partial<User> & { password?: string }) => {
-    const rawPass = (studentData.password || ('Siswa' + Math.floor(100000 + Math.random() * 900000))).trim();
-    const studentPayload = {
-      ...studentData,
-      password: rawPass,
-      initialPassword: rawPass,
-      mustChangePassword: false,
-    };
-    // Always persist to local storage first so it is immediately visible & never lost
-    const localStudent = offlineStore.createStudent(studentPayload);
-
-    try {
-      const res = await tryServerRequest<{ message: string; student: User }>('/api/admin/students', {
-        method: 'POST',
-        body: JSON.stringify({
-          ...studentPayload,
-          password: rawPass,
-        }),
-      });
-      if (res && res.student) {
-        offlineStore.saveStudentFromServer(res.student, rawPass);
-        return { message: res.message || 'Akun siswa berhasil didaftarkan!', student: res.student };
-      }
-      return { message: 'Akun siswa berhasil didaftarkan!', student: localStudent };
-    } catch (_) {
-      return { message: 'Akun siswa berhasil didaftarkan!', student: localStudent };
+    const rawPass = (studentData.password || '').trim();
+    if (!rawPass || rawPass.length < 6) {
+      throw new Error('Password wajib diisi minimal 6 karakter.');
     }
+    const res = await tryServerRequest<{ message: string; student: User }>('/api/admin/students', {
+      method: 'POST',
+      body: JSON.stringify({
+        ...studentData,
+        password: rawPass,
+      }),
+    });
+    if (res?.student) {
+      offlineStore.syncUserFromServer(res.student);
+    }
+    return res;
   },
 
   toggleStudentStatus: async (studentId: string) => {
-    try {
-      return await tryServerRequest<{ message: string; isActive: boolean }>(`/api/admin/students/${studentId}/toggle-active`, {
-        method: 'PATCH',
-      });
-    } catch (_) {
-      return { message: 'Status siswa berhasil diperbarui', isActive: true };
-    }
+    return await tryServerRequest<{ message: string; isActive: boolean }>(`/api/admin/students/${encodeURIComponent(studentId)}/toggle-active`, {
+      method: 'PATCH',
+    });
   },
 
   resetStudentPassword: async (studentId: string, newPassword?: string) => {
-    if (newPassword) {
-      offlineStore.resetStudentPassword(studentId, newPassword);
+    return await tryServerRequest<{ message: string }>(`/api/admin/students/${encodeURIComponent(studentId)}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ newPassword }),
+    });
+  },
+
+  getAllUsersAdmin: async (): Promise<User[]> => {
+    const res = await tryServerRequest<{ users: User[]; deletedUserIds?: string[] }>('/api/admin/users');
+    if (Array.isArray(res?.deletedUserIds) && res.deletedUserIds.length > 0) {
+      offlineStore.recordDeletedUserIds(res.deletedUserIds);
     }
-    try {
-      return await tryServerRequest<{ message: string }>(`/api/admin/students/${studentId}/reset-password`, {
-        method: 'POST',
-        body: JSON.stringify({ newPassword }),
-      });
-    } catch (_) {
-      return { message: 'Kata sandi siswa berhasil direset.' };
-    }
+    const users = Array.isArray(res?.users) ? res.users : [];
+    offlineStore.mergeUsersFromServer(users);
+    return users;
+  },
+
+  createUserByAdmin: async (data: Partial<User> & { password: string }) => {
+    const res = await tryServerRequest<{ message: string; user: User }>('/api/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (res?.user) offlineStore.syncUserFromServer(res.user);
+    return res;
+  },
+
+  updateUserByAdmin: async (id: string, data: Partial<User> & { password?: string; expectedUpdatedAt?: string }) => {
+    const res = await tryServerRequest<{ message: string; user: User }>(`/api/admin/users/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (res?.user) offlineStore.syncUserFromServer(res.user);
+    return res;
+  },
+
+  toggleUserActiveByAdmin: async (id: string) => {
+    return await tryServerRequest<{ message: string; isActive: boolean; user: User }>(`/api/admin/users/${encodeURIComponent(id)}/toggle-active`, {
+      method: 'PATCH',
+    });
+  },
+
+  deleteUserByAdmin: async (id: string) => {
+    const res = await tryServerRequest<{ message: string }>(`/api/admin/users/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    offlineStore.recordDeletedUserIds([id]);
+    return res;
   },
 
   getStaff: async () => {
-    let serverStaff: User[] = [];
-    try {
-      serverStaff = await tryServerRequest<User[]>('/api/admin/staff');
-    } catch (_) {
-      serverStaff = [];
-    }
-
-    const localStaff = offlineStore.getStaff();
-    const staffMap = new Map<string, User>();
-    const deletedIds = offlineStore.getDeletedUserIds();
-
-    // 1. Put all local staff first so newly created accounts are ALWAYS included immediately
-    localStaff.forEach((ls) => {
-      const cleanU = (ls.username || '').toLowerCase().replace(/^@+/, '');
-      if (!deletedIds.includes(ls.id) && !deletedIds.includes(cleanU)) {
-        staffMap.set(cleanU, ls);
-      }
-    });
-
-    // 2. Merge server staff
-    if (Array.isArray(serverStaff) && serverStaff.length > 0) {
-      serverStaff.forEach((ss) => {
-        const cleanU = (ss.username || '').toLowerCase().replace(/^@+/, '');
-        if (!deletedIds.includes(ss.id) && !deletedIds.includes(cleanU)) {
-          if (!staffMap.has(cleanU)) {
-            staffMap.set(cleanU, ss);
-            offlineStore.syncUserFromServer(ss);
-          }
-        }
-      });
-    }
-
-    return Array.from(staffMap.values());
+    const serverStaff = await tryServerRequest<User[]>('/api/admin/staff');
+    const clean = Array.isArray(serverStaff) ? serverStaff : [];
+    offlineStore.mergeUsersFromServer(clean);
+    return clean;
   },
 
   resetStaffInitialPassword: async (staffId: string) => {
-    try {
-      return await tryServerRequest<{ message: string; initialPassword?: string }>(`/api/admin/staff/${staffId}/reset-initial`, {
-        method: 'POST',
-      });
-    } catch (_) {
-      return { message: 'Kata sandi awal berhasil disetel ulang.', initialPassword: '(Sandi awal resmi)' };
-    }
+    return await tryServerRequest<{ message: string; initialPassword?: string }>(`/api/admin/staff/${encodeURIComponent(staffId)}/reset-initial`, {
+      method: 'POST',
+    });
   },
 
   // Subjects
@@ -794,35 +686,23 @@ export const api = {
   },
 
   createSubject: async (data: Partial<Subject>) => {
-    try {
-      return await tryServerRequest<Subject>('/api/subjects', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
-    } catch (_) {
-      return { id: 'subj_' + Date.now(), name: data.name || '', code: data.code || '', grade: data.grade || '10', teacherId: data.teacherId || '', teacherName: data.teacherName || '', description: '', schedule: 'Sesuai Jadwal', imageUrl: '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as Subject;
-    }
+    return await tryServerRequest<Subject>('/api/subjects', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   },
 
   updateSubject: async (id: string, data: Partial<Subject>) => {
-    try {
-      return await tryServerRequest<Subject>(`/api/subjects/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      });
-    } catch (_) {
-      return { id, ...data } as Subject;
-    }
+    return await tryServerRequest<Subject>(`/api/subjects/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
   },
 
   deleteSubject: async (id: string) => {
-    try {
-      return await tryServerRequest<{ message: string }>(`/api/subjects/${id}`, {
-        method: 'DELETE',
-      });
-    } catch (_) {
-      return { message: 'Mata pelajaran berhasil dihapus' };
-    }
+    return await tryServerRequest<{ message: string }>(`/api/subjects/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
   },
 
   // Books
@@ -835,35 +715,23 @@ export const api = {
   },
 
   createBook: async (data: Partial<DigitalBook>) => {
-    try {
-      return await tryServerRequest<DigitalBook>('/api/books', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
-    } catch (_) {
-      return { id: 'book_' + Date.now(), title: data.title || '', author: data.author || '', category: data.category || '', coverUrl: data.coverUrl || '', description: '', totalPages: 0, publishedYear: '2024', content: [], createdAt: new Date().toISOString() } as DigitalBook;
-    }
+    return await tryServerRequest<DigitalBook>('/api/books', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   },
 
   updateBook: async (id: string, data: Partial<DigitalBook>) => {
-    try {
-      return await tryServerRequest<DigitalBook>(`/api/books/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      });
-    } catch (_) {
-      return { id, ...data } as DigitalBook;
-    }
+    return await tryServerRequest<DigitalBook>(`/api/books/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
   },
 
   deleteBook: async (id: string) => {
-    try {
-      return await tryServerRequest<{ message: string }>(`/api/books/${id}`, {
-        method: 'DELETE',
-      });
-    } catch (_) {
-      return { message: 'Buku berhasil dihapus' };
-    }
+    return await tryServerRequest<{ message: string }>(`/api/books/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
   },
 
   // Announcements
@@ -876,35 +744,23 @@ export const api = {
   },
 
   createAnnouncement: async (data: Partial<Announcement>) => {
-    try {
-      return await tryServerRequest<Announcement>('/api/announcements', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
-    } catch (_) {
-      return { id: 'ann_' + Date.now(), title: data.title || '', content: data.content || '', authorName: data.authorName || 'Admin', category: (data.category as 'Penting' | 'Akademik' | 'Kegiatan' | 'Umum') || 'Penting', authorRole: 'Admin Sekolah', isPublished: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as Announcement;
-    }
+    return await tryServerRequest<Announcement>('/api/announcements', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   },
 
   updateAnnouncement: async (id: string, data: Partial<Announcement>) => {
-    try {
-      return await tryServerRequest<Announcement>(`/api/announcements/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      });
-    } catch (_) {
-      return { id, ...data } as Announcement;
-    }
+    return await tryServerRequest<Announcement>(`/api/announcements/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
   },
 
   deleteAnnouncement: async (id: string) => {
-    try {
-      return await tryServerRequest<{ message: string }>(`/api/announcements/${id}`, {
-        method: 'DELETE',
-      });
-    } catch (_) {
-      return { message: 'Pengumuman berhasil dihapus' };
-    }
+    return await tryServerRequest<{ message: string }>(`/api/announcements/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
   },
 
   // Quizzes
@@ -913,24 +769,15 @@ export const api = {
       const res = await tryServerRequest<Quiz[]>('/api/quizzes');
       if (Array.isArray(res)) {
         offlineStore.setQuizzes(res);
-        return offlineStore.getQuizzes();
+        return res;
       }
-      return offlineStore.getQuizzes();
+      return [];
     } catch (_) {
       return offlineStore.getQuizzes();
     }
   },
 
   syncLocalQuizzesToServer: async () => {
-    try {
-      const localQuizzes = offlineStore.getQuizzes();
-      if (Array.isArray(localQuizzes) && localQuizzes.length > 0) {
-        return await tryServerRequest<{ success: boolean; count: number }>('/api/quizzes/sync-local', {
-          method: 'POST',
-          body: JSON.stringify({ quizzes: localQuizzes }),
-        });
-      }
-    } catch (_) {}
     return null;
   },
 
@@ -1093,37 +940,27 @@ export const api = {
   },
 
   deleteQuizViolation: async (violationId: string) => {
+    const res = await tryServerRequest<{ success: boolean; message: string }>(`/api/quizzes/violations/${encodeURIComponent(violationId)}`, {
+      method: 'DELETE',
+    });
     offlineStore.deleteQuizViolation(violationId);
-    try {
-      return await tryServerRequest<{ success: boolean; message: string }>(`/api/quizzes/violations/${violationId}`, {
-        method: 'DELETE',
-      });
-    } catch (_) {
-      return { success: true, message: 'Pelanggaran berhasil dihapus.' };
-    }
+    return res;
   },
 
   updateQuiz: async (id: string, data: Partial<Quiz>) => {
-    try {
-      return await tryServerRequest<Quiz>(`/api/quizzes/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      });
-    } catch (_) {
-      return { id, ...data } as Quiz;
-    }
+    return await tryServerRequest<Quiz>(`/api/quizzes/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
   },
 
   deleteQuiz: async (id: string) => {
+    const res = await tryServerRequest<{ message: string }>(`/api/quizzes/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
     offlineStore.deleteQuiz(id);
     offlineStore.clearQuizViolations(id);
-    try {
-      return await tryServerRequest<{ message: string }>(`/api/quizzes/${id}`, {
-        method: 'DELETE',
-      });
-    } catch (_) {
-      return { message: 'Kuis berhasil dihapus permanen' };
-    }
+    return res;
   },
 
   submitQuiz: async (quizId: string, payload: { answers: { questionId: string; selectedOption: number }[] | Record<string, string>; tokenUsed?: string }) => {
@@ -1324,14 +1161,11 @@ export const api = {
   },
 
   deletePost: async (postId: string) => {
+    const res = await tryServerRequest<{ message: string }>(`/api/posts/${encodeURIComponent(postId)}`, {
+      method: 'DELETE',
+    });
     offlineStore.deletePost(postId);
-    try {
-      return await tryServerRequest<{ message: string }>(`/api/posts/${postId}`, {
-        method: 'DELETE',
-      });
-    } catch (_) {
-      return { message: 'Postingan berhasil dihapus' };
-    }
+    return res;
   },
 
   togglePinPost: async (postId: string) => {
@@ -1441,16 +1275,17 @@ export const api = {
 
   // Stories (Hanya diisi oleh akun terdaftar - Permanen)
   getStories: async () => {
+    const deletedStoryIds: string[] = offlineStore.getDeletedStoryIds();
     let serverStories: Story[] = [];
     try {
       serverStories = await tryServerRequest<Story[]>('/api/stories');
       if (Array.isArray(serverStories)) {
-        serverStories = serverStories.filter((s) => !s.id.startsWith('story_seed_'));
+        serverStories = serverStories.filter((s) => !s.id.startsWith('story_seed_') && !deletedStoryIds.includes(s.id));
       }
     } catch (_) {
       serverStories = [];
     }
-    const localStories = offlineStore.getStories().filter((s) => !s.id.startsWith('story_seed_'));
+    const localStories = offlineStore.getStories().filter((s) => !s.id.startsWith('story_seed_') && !deletedStoryIds.includes(s.id));
     const storyMap = new Map<string, Story>();
     localStories.forEach((s) => {
       storyMap.set(s.id, s);
@@ -1485,13 +1320,11 @@ export const api = {
   },
 
   deleteStory: async (id: string) => {
-    try {
-      return await tryServerRequest<{ message: string }>(`/api/stories/${id}`, {
-        method: 'DELETE',
-      });
-    } catch (_) {
-      return offlineStore.deleteStory(id);
-    }
+    const res = await tryServerRequest<{ message: string }>(`/api/stories/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    offlineStore.deleteStory(id);
+    return res;
   },
 
   // Personal Notes (Arsip Siswa)
@@ -1568,33 +1401,21 @@ export const api = {
   },
 
   markNotificationRead: async (id: string) => {
-    try {
-      return await tryServerRequest<{ success: boolean }>(`/api/notifications/${id}/read`, {
-        method: 'PATCH',
-      });
-    } catch (_) {
-      return offlineStore.markNotificationRead(id);
-    }
+    return await tryServerRequest<{ success: boolean }>(`/api/notifications/${encodeURIComponent(id)}/read`, {
+      method: 'PATCH',
+    });
   },
 
   markAllNotificationsRead: async () => {
-    try {
-      return await tryServerRequest<{ success: boolean }>('/api/notifications/read-all', {
-        method: 'POST',
-      });
-    } catch (_) {
-      return offlineStore.markAllNotificationsRead();
-    }
+    return await tryServerRequest<{ success: boolean }>('/api/notifications/read-all', {
+      method: 'POST',
+    });
   },
 
   deleteNotification: async (id: string) => {
-    try {
-      return await tryServerRequest<{ message: string }>(`/api/notifications/${id}`, {
-        method: 'DELETE',
-      });
-    } catch (_) {
-      return offlineStore.deleteNotification(id);
-    }
+    return await tryServerRequest<{ message: string }>(`/api/notifications/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
   },
 
   createNotification: async (data: {
@@ -1607,34 +1428,21 @@ export const api = {
     targetRole?: string;
     targetClass?: string;
   }) => {
-    try {
-      const res = await tryServerRequest<{ success: boolean; message: string; notification: AppNotification }>('/api/notifications', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
-      return res.notification;
-    } catch (err: any) {
-      const local = offlineStore.createNotification(data as any);
-      return local;
-    }
+    const res = await tryServerRequest<{ success: boolean; message: string; notification: AppNotification }>('/api/notifications', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return res.notification;
   },
 
   getAdminNotifications: async () => {
-    try {
-      return await tryServerRequest<AppNotification[]>('/api/admin/notifications');
-    } catch (_) {
-      return offlineStore.getNotifications();
-    }
+    return await tryServerRequest<AppNotification[]>('/api/admin/notifications');
   },
 
   deleteNotificationAdmin: async (id: string) => {
-    try {
-      return await tryServerRequest<{ message: string }>(`/api/admin/notifications/${id}`, {
-        method: 'DELETE',
-      });
-    } catch (_) {
-      return offlineStore.deleteNotification(id);
-    }
+    return await tryServerRequest<{ message: string }>(`/api/admin/notifications/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
   },
 
   // -------------------------------------------------------------
@@ -1683,13 +1491,9 @@ export const api = {
   },
 
   deleteArticle: async (id: string) => {
-    try {
-      return await tryServerRequest<{ message: string }>(`/api/articles/${id}`, {
-        method: 'DELETE',
-      });
-    } catch (_) {
-      return offlineStore.deleteArticle(id);
-    }
+    return await tryServerRequest<{ message: string }>(`/api/articles/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
   },
 
   // -------------------------------------------------------------
@@ -1757,13 +1561,9 @@ export const api = {
   },
 
   deleteTuitionBill: async (id: string) => {
-    try {
-      return await tryServerRequest<{ message: string }>(`/api/tu/bills/${id}`, {
-        method: 'DELETE',
-      });
-    } catch (_) {
-      return offlineStore.deleteTuitionBill(id);
-    }
+    return await tryServerRequest<{ message: string }>(`/api/tu/bills/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
   },
 
   getTuitionTransactions: async (type?: string) => {
@@ -1807,13 +1607,9 @@ export const api = {
   },
 
   deleteTuDocument: async (id: string) => {
-    try {
-      return await tryServerRequest<{ message: string }>(`/api/tu/documents/${id}`, {
-        method: 'DELETE',
-      });
-    } catch (_) {
-      return offlineStore.deleteTuDocument(id);
-    }
+    return await tryServerRequest<{ message: string }>(`/api/tu/documents/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
   },
 
   getTuChatMessages: async (studentId?: string) => {
@@ -1840,63 +1636,45 @@ export const api = {
   // MANAJEMEN GURU, CENTANG BIRU & ALUMNI
   // -------------------------------------------------------------
   createTeacher: async (data: any) => {
-    // Always persist to local storage first so it is immediately visible & never lost
-    const t = offlineStore.createTeacherAccount(data);
-    try {
-      const res = await tryServerRequest<{ message: string; teacher: any }>('/api/admin/teachers', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
-      if (res && res.teacher) {
-        offlineStore.syncUserFromServer(res.teacher);
-        return { message: res.message || 'Akun guru berhasil dibuat', teacher: res.teacher };
-      }
-      return { message: 'Akun guru berhasil dibuat', teacher: t };
-    } catch (_) {
-      return { message: 'Akun guru berhasil dibuat', teacher: t };
+    const res = await tryServerRequest<{ message: string; teacher: User }>('/api/admin/teachers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (res?.teacher) {
+      offlineStore.syncUserFromServer(res.teacher);
     }
+    return res;
   },
 
   updateTeacher: async (id: string, data: any) => {
-    try {
-      return await tryServerRequest<{ message: string; teacher: any }>(`/api/admin/teachers/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      });
-    } catch (_) {
-      const t = offlineStore.updateTeacherAccount(id, data);
-      return { message: 'Akun guru berhasil diperbarui', teacher: t };
+    const res = await tryServerRequest<{ message: string; teacher: User }>(`/api/admin/teachers/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    if (res?.teacher) {
+      offlineStore.syncUserFromServer(res.teacher);
     }
+    return res;
   },
 
   deleteTeacher: async (id: string) => {
-    try {
-      return await tryServerRequest<{ message: string }>(`/api/admin/teachers/${id}`, {
-        method: 'DELETE',
-      });
-    } catch (_) {
-      return offlineStore.deleteTeacherAccount(id);
-    }
+    const res = await tryServerRequest<{ message: string }>(`/api/admin/teachers/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    offlineStore.deleteTeacherAccount(id);
+    return res;
   },
 
   toggleVerifiedBadge: async (userId: string) => {
-    try {
-      return await tryServerRequest<{ message: string; isVerified: boolean }>(`/api/admin/users/${userId}/verified`, {
-        method: 'PATCH',
-      });
-    } catch (_) {
-      return offlineStore.toggleVerifiedBadge(userId);
-    }
+    return await tryServerRequest<{ message: string; isVerified: boolean }>(`/api/admin/users/${encodeURIComponent(userId)}/verified`, {
+      method: 'PATCH',
+    });
   },
 
   toggleAlumniStatus: async (studentId: string) => {
-    try {
-      return await tryServerRequest<{ message: string; isAlumni: boolean }>(`/api/admin/students/${studentId}/alumni`, {
-        method: 'PATCH',
-      });
-    } catch (_) {
-      return offlineStore.toggleAlumniStatus(studentId);
-    }
+    return await tryServerRequest<{ message: string; isAlumni: boolean }>(`/api/admin/students/${encodeURIComponent(studentId)}/alumni`, {
+      method: 'PATCH',
+    });
   },
 
   createTeacherAccount: async (data: any) => {
@@ -1932,40 +1710,22 @@ export const api = {
   },
 
   createAttendanceEvent: async (data: any) => {
-    try {
-      return await tryServerRequest<any>('/api/attendance/events', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
-    } catch (_) {
-      return {
-        id: 'event_' + Date.now(),
-        ...data,
-        isOpen: true,
-        isActive: true,
-        createdAt: new Date().toISOString(),
-      };
-    }
+    return await tryServerRequest<any>('/api/attendance/events', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   },
 
   toggleEventSession: async (eventId: string) => {
-    try {
-      return await tryServerRequest<any>(`/api/attendance/events/${eventId}/toggle`, {
-        method: 'PATCH',
-      });
-    } catch (_) {
-      return { success: true, message: 'Status sesi absensi berhasil diubah' };
-    }
+    return await tryServerRequest<any>(`/api/attendance/events/${encodeURIComponent(eventId)}/toggle-session`, {
+      method: 'PATCH',
+    });
   },
 
   deleteAttendanceEvent: async (eventId: string) => {
-    try {
-      return await tryServerRequest<any>(`/api/attendance/events/${eventId}`, {
-        method: 'DELETE',
-      });
-    } catch (_) {
-      return { success: true, message: 'Kegiatan berhasil dihapus' };
-    }
+    return await tryServerRequest<any>(`/api/attendance/events/${encodeURIComponent(eventId)}`, {
+      method: 'DELETE',
+    });
   },
 
   getAttendanceRecords: async (eventId?: string) => {
@@ -2731,14 +2491,16 @@ export const api = {
   },
 
   deleteDirectMessage: async (messageId: string): Promise<boolean> => {
+    const curId = offlineStore.getCurrentUserId() || '';
+    // Record tombstone locally agar pesan tidak muncul kembali
+    offlineStore.deleteDirectMessage(messageId, curId);
     try {
       await tryServerRequest(`/api/dm/messages/${encodeURIComponent(messageId)}`, {
         method: 'DELETE',
       });
       return true;
     } catch (_) {
-      const curId = offlineStore.getCurrentUserId() || '';
-      return offlineStore.deleteDirectMessage(messageId, curId);
+      return true; // sudah dihapus lokal
     }
   },
 
@@ -3052,18 +2814,37 @@ export const api = {
     email?: string;
     phone?: string;
   }) => {
-    try {
-      const res = await tryServerRequest<{ message: string; staff: User }>('/api/admin/staff', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
-      if (res?.staff) {
-        offlineStore.syncUserFromServer(res.staff);
-        return { message: res.message || 'Akun staf berhasil dibuat', staff: res.staff };
-      }
-    } catch (_) {}
-    const s = offlineStore.createStaffAccount ? offlineStore.createStaffAccount(data) : null;
-    return { message: 'Akun staf berhasil dibuat', staff: s };
+    const res = await tryServerRequest<{ message: string; staff: User; teacher?: User }>('/api/admin/staff', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    const created = res?.staff || res?.teacher;
+    if (created) {
+      offlineStore.syncUserFromServer(created);
+    }
+    return {
+      message: res?.message || 'Akun staf berhasil dibuat',
+      staff: created,
+      teacher: created,
+    };
+  },
+
+  deleteLostFoundItem: async (id: string) => {
+    return await tryServerRequest<{ message: string }>(`/api/lost-found/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  deleteActivityPermission: async (id: string) => {
+    return await tryServerRequest<{ message: string }>(`/api/activity-permissions/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  deleteAppReport: async (id: string) => {
+    return await tryServerRequest<{ message: string }>(`/api/app-reports/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
   },
 
   // -------------------------------------------------------------
@@ -3148,15 +2929,10 @@ export const api = {
     try {
       const res = await tryServerRequest<{ classes: SchoolClass[] }>('/api/classes');
       if (Array.isArray(res?.classes)) return res.classes;
-    } catch (_) {}
-    return [
-      { id: 'class_7a', name: 'Kelas 7A', grade: '7', description: 'Kelas 7 Unggulan', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-      { id: 'class_7b', name: 'Kelas 7B', grade: '7', description: 'Kelas 7 Reguler', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-      { id: 'class_8a', name: 'Kelas 8A', grade: '8', description: 'Kelas 8 Unggulan', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-      { id: 'class_8b', name: 'Kelas 8B', grade: '8', description: 'Kelas 8 Reguler', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-      { id: 'class_9a', name: 'Kelas 9A', grade: '9', description: 'Kelas 9 Persiapan Ujian', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-      { id: 'class_9b', name: 'Kelas 9B', grade: '9', description: 'Kelas 9 Reguler', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    ];
+    } catch (err) {
+      console.warn('[API] Gagal memuat daftar kelas dari server:', err);
+    }
+    return [];
   },
 
   saveSchoolClass: async (data: Partial<SchoolClass> & { name: string; grade: string }) => {
