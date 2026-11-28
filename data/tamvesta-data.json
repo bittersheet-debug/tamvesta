@@ -669,6 +669,19 @@
       "os": "Android",
       "browser": "Chrome",
       "deviceName": "Android (Chrome)",
+      "userId": "user_admin_tamansiswa",
+      "username": "TAMANSISWA",
+      "userName": "Administrator Tamansiswa Batam",
+      "userRole": "admin",
+      "id": "sess_1795866901169_lq68",
+      "lastActive": "2026-11-28T11:55:01.168Z",
+      "createdAt": "2026-11-28T11:55:01.168Z"
+    },
+    {
+      "deviceType": "mobile",
+      "os": "Android",
+      "browser": "Chrome",
+      "deviceName": "Android (Chrome)",
       "userId": "stu_1795839550817_nsfxm",
       "username": "kimel",
       "userName": "Alvaro Pratama Herlen",
@@ -818,5 +831,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 408
+  "syncVersion": 410
 }
