@@ -64,8 +64,7 @@
       "createdAt": "2026-10-24T08:22:46.854Z",
       "updatedAt": "2026-10-24T08:22:46.854Z",
       "tokenVersion": 0,
-      "isVerified": true,
-      "badgeType": "blue"
+      "isVerified": false
     },
     {
       "id": "user_staff_bambang_operator",
@@ -899,5 +898,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 221
+  "syncVersion": 224
 }
