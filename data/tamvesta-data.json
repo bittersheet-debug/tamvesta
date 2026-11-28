@@ -727,6 +727,19 @@
       "os": "Android",
       "browser": "Chrome",
       "deviceName": "Android (Chrome)",
+      "userId": "user_staff_masni",
+      "username": "masni",
+      "userName": "Masni",
+      "userRole": "guru",
+      "id": "sess_1795842414961_yshk",
+      "lastActive": "2026-11-28T05:06:54.961Z",
+      "createdAt": "2026-11-28T05:06:54.961Z"
+    },
+    {
+      "deviceType": "mobile",
+      "os": "Android",
+      "browser": "Chrome",
+      "deviceName": "Android (Chrome)",
       "userId": "stu_1795839550817_nsfxm",
       "username": "kimel",
       "userName": "Alvaro Pratama Herlen",
@@ -869,5 +882,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 244
+  "syncVersion": 246
 }
