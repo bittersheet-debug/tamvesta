@@ -351,7 +351,10 @@
       "phone": "0895410591097",
       "email": "paro.pratama.herlenn@gmail.com",
       "passwordChanged": true,
-      "tokenVersion": 1
+      "tokenVersion": 1,
+      "following": [
+        "stu_1795866977051_m9dt1"
+      ]
     },
     {
       "id": "stu_1795866977051_m9dt1",
@@ -983,5 +986,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 570
+  "syncVersion": 574
 }
