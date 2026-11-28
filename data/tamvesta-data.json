@@ -47,8 +47,7 @@
       "createdAt": "2026-10-24T08:22:46.837Z",
       "updatedAt": "2026-10-24T08:22:46.837Z",
       "tokenVersion": 0,
-      "isVerified": true,
-      "badgeType": "blue"
+      "isVerified": false
     },
     {
       "id": "user_staff_margaretha_h",
@@ -899,5 +898,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 212
+  "syncVersion": 217
 }
