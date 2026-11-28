@@ -567,18 +567,6 @@
       "createdAt": "2026-11-28T05:04:26.598Z"
     },
     {
-      "id": "notif_1795842063854_shsjm",
-      "title": "Pengajuan Ganti Sandi di-ACC",
-      "message": "Pengajuan ganti sandi Anda (Tiket: TKT-302331) telah di-ACC oleh Admin. Kata sandi baru Anda telah aktif dan dapat langsung digunakan.",
-      "type": "security",
-      "isImportant": false,
-      "linkType": "none",
-      "targetUserId": "stu_1795839550817_nsfxm",
-      "readBy": [],
-      "deletedBy": [],
-      "createdAt": "2026-11-28T05:01:03.854Z"
-    },
-    {
       "id": "notif_1795842055353_zhxzc",
       "title": "Pengajuan Ganti Sandi Baru",
       "message": "Alvaro Pratama Herlen (Kelas 8) mengajukan ganti sandi (Tiket: TKT-302331).",
@@ -854,7 +842,8 @@
   "deletedMessageIds": [],
   "deletedNotificationIds": [
     "notif_1795842191506_u0z4b",
-    "notif_1795842238638_a88a3"
+    "notif_1795842238638_a88a3",
+    "notif_1795842063854_shsjm"
   ],
   "deletedArticleIds": [],
   "deletedEventIds": [],
@@ -863,5 +852,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 308
+  "syncVersion": 311
 }
