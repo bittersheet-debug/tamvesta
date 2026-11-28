@@ -352,6 +352,28 @@
       "email": "paro.pratama.herlenn@gmail.com",
       "passwordChanged": true,
       "tokenVersion": 1
+    },
+    {
+      "id": "stu_1795866977051_m9dt1",
+      "username": "valenyp",
+      "name": "Valen Yudha Pratama",
+      "role": "siswa",
+      "gender": "Laki-laki",
+      "kelas": "Kelas 9",
+      "passwordHash": "pbkdf2v2$2907cbeed73400d1d56be05e75702f1e2c1d3e2fef1528ed656478aa00a8e6155869c315c54fb15cf4fbec767587bd24f0aef5404f1a9779731fc2468ecd8250",
+      "salt": "52954a3175b70f5f4283271dd8d71c66",
+      "tokenVersion": 0,
+      "mustChangePassword": false,
+      "isActive": true,
+      "registrationStatus": "approved",
+      "qrToken": "TAMVESTA:STUDENT:stu_1795866977051_m9dt1:1fbd7916c3409dde",
+      "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Valen%20Yudha%20Pratama&backgroundColor=0284c7",
+      "createdAt": "2026-11-28T11:56:17.051Z",
+      "updatedAt": "2026-11-28T11:56:17.051Z",
+      "isOfficial": true,
+      "isCustom": true,
+      "source": "admin",
+      "isDemo": false
     }
   ],
   "subjects": [],
@@ -377,6 +399,24 @@
   "attendanceRecords": [],
   "passwordResetRequests": [
     {
+      "id": "pr_1793379084239",
+      "ticketNumber": "TKT-574403",
+      "userId": "stu_1793377010945_uzghx",
+      "username": "siswa.rian.resmi",
+      "name": "Rian Pratama",
+      "kelas": "Kelas 7",
+      "role": "siswa",
+      "reason": "Pengajuan ganti sandi berkala",
+      "status": "approved",
+      "newPasswordHash": "1a3a6c21e8783c7bad84e7156b2a6c9b935a2996c2eeab2d6abb764e388304204f4879511103e652a8320ee979b735c378c5a81a4cbe1ddf1d3ca39006901447",
+      "newSalt": "264d2c9588c3de3d98c10077b8c82422",
+      "newPassword": "passwordBaru789",
+      "createdAt": "2026-10-30T16:51:24.239Z",
+      "processedAt": "2026-10-30T16:56:16.713Z",
+      "processedBy": "Administrator Tamansiswa Batam",
+      "adminNote": "Telah Disetujui"
+    },
+    {
       "id": "pr_1795842055353",
       "ticketNumber": "TKT-302331",
       "userId": "stu_1795839550817_nsfxm",
@@ -394,20 +434,20 @@
       "processedBy": "Administrator Tamansiswa Batam"
     },
     {
-      "id": "pr_1793379084239",
-      "ticketNumber": "TKT-574403",
-      "userId": "stu_1793377010945_uzghx",
-      "username": "siswa.rian.resmi",
-      "name": "Rian Pratama",
-      "kelas": "Kelas 7",
+      "id": "pr_1793377899590",
+      "ticketNumber": "TKT-994704",
+      "userId": "stu_1793373992097_jv1v1",
+      "username": "graniat",
+      "name": "Alvaro Pratama Herlen",
+      "kelas": "Kelas 8",
       "role": "siswa",
       "reason": "Pengajuan ganti sandi berkala",
       "status": "approved",
-      "newPasswordHash": "1a3a6c21e8783c7bad84e7156b2a6c9b935a2996c2eeab2d6abb764e388304204f4879511103e652a8320ee979b735c378c5a81a4cbe1ddf1d3ca39006901447",
-      "newSalt": "264d2c9588c3de3d98c10077b8c82422",
-      "newPassword": "passwordBaru789",
-      "createdAt": "2026-10-30T16:51:24.239Z",
-      "processedAt": "2026-10-30T16:56:16.713Z",
+      "newPasswordHash": "2e666ad0450949ee296f2634e62471db45d1df66651bc716ac01fa85053e4ff28fe69fac585df32a5c9fe7afcb96a725cf764de0721d33b2b1c1820d4d1f0148",
+      "newSalt": "7e1e10ed5203669f3d107fecf5f68dfa",
+      "newPassword": "Paro Pratama1",
+      "createdAt": "2026-10-30T16:31:39.590Z",
+      "processedAt": "2026-10-30T16:56:17.016Z",
       "processedBy": "Administrator Tamansiswa Batam",
       "adminNote": "Telah Disetujui"
     }
@@ -469,6 +509,35 @@
   "stories": [],
   "notes": [],
   "notifications": [
+    {
+      "id": "notif_1795866977163_5gqdc",
+      "title": "AKUN BARU DITAMBAHKAN",
+      "message": "Admin lain (Administrator Tamansiswa Batam) telah menambahkan akun baru ke sistem TAMVESTA: Valen Yudha Pratama (@valenyp • Role: Siswa).",
+      "type": "admin_account_event",
+      "isImportant": true,
+      "linkType": "students",
+      "linkId": "stu_1795866977051_m9dt1",
+      "targetRole": "admin",
+      "targetRoles": [
+        "admin"
+      ],
+      "excludeUserId": "user_admin_tamansiswa",
+      "excludeDeviceId": "dev_b85e8af9-04e8-45bc-8637-4e5e3eff251c",
+      "dedupeKey": "admin_acct:created:stu_1795866977051_m9dt1:created_once",
+      "actorId": "user_admin_tamansiswa",
+      "actorName": "Administrator Tamansiswa Batam",
+      "statusLabel": "Status: Berhasil ditambahkan.",
+      "metadata": {
+        "action": "created",
+        "targetUserId": "stu_1795866977051_m9dt1",
+        "targetUsername": "valenyp",
+        "targetName": "Valen Yudha Pratama",
+        "targetRole": "siswa"
+      },
+      "readBy": [],
+      "deletedBy": [],
+      "createdAt": "2026-11-28T11:56:17.163Z"
+    },
     {
       "id": "notif_1795866934742_3lywo",
       "title": "AKUN DIHAPUS PERMANEN",
@@ -624,6 +693,16 @@
   "gameRooms": [],
   "refreshSignals": [
     {
+      "id": "sig_1795866977157_aque",
+      "userId": "stu_1795866977051_m9dt1",
+      "userName": "Valen Yudha Pratama",
+      "userUsername": "valenyp",
+      "userKelas": "Kelas 9",
+      "timestamp": "2026-11-28T11:56:17.131Z",
+      "formattedTime": "11.56.17 WIB",
+      "status": "received"
+    },
+    {
       "id": "sig_1794044519462_c63l",
       "userKelas": "-",
       "timestamp": "2026-11-07T09:41:59.462Z",
@@ -769,6 +848,16 @@
   ],
   "activityLogs": [
     {
+      "type": "account_created",
+      "title": "Pembuatan Akun Siswa",
+      "description": "Akun Siswa @valenyp (Valen Yudha Pratama - Kelas 9) berhasil ditambahkan.",
+      "userId": "stu_1795866977051_m9dt1",
+      "userName": "Valen Yudha Pratama",
+      "userRole": "siswa",
+      "id": "log_1795866977129_2nbn",
+      "timestamp": "2026-11-28T11:56:17.129Z"
+    },
+    {
       "type": "account_deleted",
       "title": "Penghapusan Akun Permanen",
       "description": "Akun SISWA @graniat (Alvaro Pratama Herlen) telah dihapus secara permanen dari database.",
@@ -871,5 +960,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 436
+  "syncVersion": 453
 }
