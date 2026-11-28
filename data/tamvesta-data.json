@@ -393,13 +393,15 @@
       "qrToken": "TAMVESTA:STUDENT:stu_1795839550817_nsfxm:5aa97099d5d26da4",
       "avatarUrl": "https://api.dicebear.com/7.x/initials/svg?seed=Alvaro%20Pratama%20Herlen&backgroundColor=0284c7",
       "createdAt": "2026-11-28T04:19:10.817Z",
-      "updatedAt": "2026-11-28T04:19:10.817Z",
+      "updatedAt": "2026-11-28T04:56:19.748Z",
       "isOfficial": true,
       "isCustom": true,
       "source": "admin",
       "isDemo": false,
       "isVerified": true,
-      "badgeType": "blue"
+      "badgeType": "blue",
+      "phone": "0895410591097",
+      "email": "paro.pratama.herlenn@gmail.com"
     }
   ],
   "subjects": [],
@@ -698,5 +700,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 24
+  "syncVersion": 39
 }
