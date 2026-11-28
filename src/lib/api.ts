@@ -69,22 +69,10 @@ export function removeStoredToken() {
 /** Ambil base URL server yang tersimpan, default ke Vercel Cloud https://tamvesta.vercel.app */
 export function getServerUrl(): string {
   const stored = localStorage.getItem(SERVER_URL_KEY);
-  // Bersihkan IP lokal lama laptop atau domain lama jika tersimpan
-  if (
-    stored &&
-    (stored.includes('192.168.') ||
-      stored.includes('localhost') ||
-      stored.includes('127.0.0.1') ||
-      stored.includes(':3000') ||
-      stored.includes('tamvestaa.vercel.app') ||
-      stored.includes('apkupdate-indol.vercel.app') ||
-      stored.includes('apkupdate.vercel.app'))
-  ) {
+  // Bersihkan URL lama dan selalu arahkan ke https://tamvesta.vercel.app
+  if (stored && !stored.startsWith('https://tamvesta.vercel.app')) {
     localStorage.removeItem(SERVER_URL_KEY);
     return DEFAULT_SERVER_URL;
-  }
-  if (stored) {
-    return stored;
   }
   return DEFAULT_SERVER_URL;
 }
