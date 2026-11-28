@@ -408,7 +408,19 @@
   ],
   "subjects": [],
   "books": [],
-  "announcements": [],
+  "announcements": [
+    {
+      "title": "hello",
+      "content": "welcome to mobile tamvesta",
+      "category": "Penting",
+      "authorName": "Administrator Tamansiswa Batam",
+      "authorRole": "Admin Sekolah",
+      "isPublished": true,
+      "id": "ann_1795842137086",
+      "createdAt": "2026-11-28T05:02:17.086Z",
+      "updatedAt": "2026-11-28T05:02:17.086Z"
+    }
+  ],
   "quizzes": [],
   "quizAttempts": [],
   "quizViolations": [],
@@ -781,5 +793,5 @@
   "deletedDocumentIds": [],
   "hasSeededDefaultClasses": true,
   "hasSeededDefaultNotifications": true,
-  "syncVersion": 105
+  "syncVersion": 120
 }
